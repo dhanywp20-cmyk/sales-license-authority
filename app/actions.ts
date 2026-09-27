@@ -88,10 +88,16 @@ export async function aksiRegistrasi(_: HasilRegistrasi, f: FormData): Promise<H
     return { galat: 'Isian tidak lengkap atau tidak sah.' };
   }
   const custom = Object.fromEntries(KUNCI_FITUR.map((x) => [x, f.get(`fitur_${x}`) === 'on']));
-  const h = await LicenseService.register({
-    company: perusahaan, environment: lingkungan as 'production', paket: paket as Paket, hari,
-    aktifkan: f.get('aktifkan') === 'on', custom,
-  }, PELAKU);
+  let h;
+  try {
+    h = await LicenseService.register({
+      company: perusahaan, environment: lingkungan as 'production', paket: paket as Paket, hari,
+      aktifkan: f.get('aktifkan') === 'on', custom,
+    }, PELAKU);
+  } catch (e) {
+    console.error('[registrasi] gagal:', e instanceof Error ? e.message : 'unknown');
+    return { galat: 'Database pusat tidak bisa diakses. Buka menu Pemeriksaan untuk melihat penyebabnya.' };
+  }
   revalidatePath('/');
   if (!h.ok || !h.deployment_key) return { galat: `Registrasi gagal: ${h.code ?? 'unknown'}` };
   return { deployment_code: h.deployment_code, license_code: h.license_code, deployment_key: h.deployment_key };
