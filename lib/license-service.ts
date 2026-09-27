@@ -6,7 +6,7 @@ import {
 import { buatKodeAktivasi, hashKunciDeployment } from '@/lib/kontrak/tanda-tangan.ts';
 import { db, rpc } from './db';
 import {
-  kirimKeDeveloper, papanPermintaan, teksHasil, teksKedaluwarsa, teksPermintaanBaru,
+  kirimKeDeveloper, papanPermintaan, teksHasil, teksKedaluwarsa, teksPengajuanBaru, teksPermintaanBaru,
 } from './telegram';
 import type { HasilAksi, HasilVerifikasi, InfoLisensi, Pelaku } from './types';
 
@@ -208,6 +208,40 @@ export const LicenseService = {
     if (!info) return { ok: false, code: 'LICENSE_NOT_FOUND' };
     const peta = { ...normalisasiFitur(info.features), [fitur]: aktif };
     return this.reissue(info.license_code, 'CUSTOM', peta, null, null, pelaku, kunciAksi, `${fitur}=${aktif ? 'on' : 'off'}`);
+  },
+
+  /* ── Pengajuan dari platform yang belum punya lisensi ───────────────── */
+
+  /**
+   * HANYA memberi tahu developer lewat Telegram. Tidak ada yang dibuat di
+   * database dan tidak ada kode yang dikirim balik — Kode Aktivasi tetap
+   * diterbitkan dan diserahkan developer secara manual. Dibatasi 1 pengajuan
+   * per platform per 15 menit dan 20 pengajuan per jam secara total.
+   */
+  async enroll(m: {
+    company: string; contact: string; requested_by: string | null; package: Paket; trial: boolean;
+    days: number | null; notes: string | null; instance: string; dashboard: string;
+  }): Promise<{ ok: boolean; code?: string }> {
+    const sejamLalu = new Date(Date.now() - 3600_000).toISOString();
+    const { count } = await db().from('processed_actions').select('action_key', { count: 'exact', head: true })
+      .like('action_key', 'enroll:%').gte('created_at', sejamLalu);
+    if ((count ?? 0) >= 20) return { ok: false, code: 'RATE_LIMITED' };
+    const ember = Math.floor(Date.now() / 900_000);
+    if (!(await rpc<boolean>('la_claim_once', { p_key: `enroll:${m.instance}:${ember}` }))) {
+      return { ok: false, code: 'RATE_LIMITED' };
+    }
+
+    const { data: dep } = await db().from('deployments').select('deployment_code, company_name')
+      .eq('instance_hash', m.instance).maybeSingle();
+    const terdaftar = dep ? `${dep.deployment_code} (${dep.company_name})` : null;
+
+    const q = new URLSearchParams({ company: m.company, paket: m.package, jenis: m.trial ? 'TRIAL' : 'STANDARD' });
+    if (!m.trial && m.days) q.set('hari', String(m.days));
+    const pesan = teksPengajuanBaru({ ...m, terdaftar });
+    // Tombol URL ditolak Telegram bila alamatnya bukan https publik — kirim ulang tanpa tombol.
+    const id = await kirimKeDeveloper(pesan, [[{ text: '➕ Buka form registrasi', url: `${m.dashboard}/register?${q}` }]])
+      ?? await kirimKeDeveloper(pesan);
+    return id === null ? { ok: false, code: 'NOTIFY_FAILED' } : { ok: true };
   },
 
   /* ── Registrasi (§41) ───────────────────────────────────────────────── */

@@ -69,7 +69,7 @@ function sisaHari(iso: string | null): string {
   return h > 0 ? `${h} hari` : 'berakhir';
 }
 
-type Tombol = { text: string; callback_data: string };
+type Tombol = { text: string; callback_data: string } | { text: string; url: string };
 export type Papan = Tombol[][];
 
 async function panggil(metode: string, badan: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -183,6 +183,32 @@ export function teksLisensi(info: InfoLisensi): string {
     `Status: <b>${esc(info.status)}</b>`,
     `Valid: ${tgl(info.starts_at)} → ${tgl(info.expires_at)} (${sisaHari(info.expires_at)})`,
     `Last check: ${info.last_verified_at ? `${tgl(info.last_verified_at)} ${new Date(info.last_verified_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}` : '—'}`,
+  ].join('\n');
+}
+
+/** Pengajuan dari platform yang BELUM punya lisensi — hanya pemberitahuan, kode tetap dibuat manual. */
+export function teksPengajuanBaru(r: {
+  company: string; contact: string; requested_by: string | null; package: Paket; trial: boolean;
+  days: number | null; notes: string | null; instance: string; terdaftar: string | null;
+}): string {
+  const durasi = r.trial ? 'Trial (hari ditentukan developer)'
+    : r.days ? (r.days % 365 === 0 ? `${r.days / 365} tahun` : `${r.days} hari`) : '—';
+  return [
+    '📝 <b>PENGAJUAN LISENSI BARU</b>',
+    '',
+    `Perusahaan:\n${esc(r.company)}`,
+    '',
+    `Kontak:\n${esc(r.contact)}${r.requested_by ? `\n(diajukan oleh ${esc(r.requested_by)})` : ''}`,
+    '',
+    `Paket:\n${esc(LABEL_PAKET[r.package] ?? r.package)}`,
+    '',
+    `Jenis / durasi:\n${durasi}`,
+    r.notes ? `\nCatatan:\n${esc(r.notes)}` : '',
+    '',
+    `Platform: <code>${esc(r.instance.slice(0, 12))}</code>`,
+    r.terdaftar ? `⚠ Platform ini SUDAH terdaftar: ${esc(r.terdaftar)} — kode baru akan ditolak (trial tidak bisa diulang).` : '',
+    '',
+    'Kode Aktivasi TIDAK dikirim otomatis. Bila disetujui, registrasi di dashboard lalu kirim kodenya ke pelanggan secara manual.',
   ].join('\n');
 }
 
