@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 12 }}>
             <a href="/">Lisensi</a>
             <a href="/register">Registrasi deployment</a>
+            <a href="/cek">Pemeriksaan</a>
           </span>
         </header>
         <main>{children}</main>
