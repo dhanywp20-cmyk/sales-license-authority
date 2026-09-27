@@ -71,7 +71,15 @@ export async function POST(request: NextRequest) {
   if (!u || !Number.isSafeInteger(u.update_id)) return NextResponse.json({ ok: true });
 
   // Pengiriman ulang update yang sama (mis. timeout jaringan) diabaikan.
-  const baru = await rpc<boolean>('la_claim_once', { p_key: `tg:update:${u.update_id}` }).catch(() => false);
+  let baru: boolean;
+  try {
+    baru = await rpc<boolean>('la_claim_once', { p_key: `tg:update:${u.update_id}` });
+  } catch (e) {
+    // Database pusat tidak terjangkau: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY
+    // salah, atau SQL 001 belum dijalankan. Dicatat supaya tidak diam-diam.
+    console.error('[telegram] database pusat gagal diakses:', e instanceof Error ? e.message : 'unknown');
+    return NextResponse.json({ ok: true });
+  }
   if (!baru) return NextResponse.json({ ok: true });
 
   try {
@@ -133,7 +141,7 @@ async function tanganiPerintah(msg: TgPesan) {
   const chat = msg.chat.id;
   if (!bolehBertindak(msg.from?.id)) {
     // Tidak membocorkan apa pun ke pengirim tak dikenal.
-    console.warn(`[telegram] perintah ditolak dari pengguna ${msg.from?.id}`);
+    console.warn(`[telegram] perintah ditolak dari pengguna ${msg.from?.id} — bila ini ID Anda, isi TELEGRAM_DEVELOPER_ID dengan angka ini`);
     return;
   }
   const pelaku: Pelaku = { nama: `telegram:${msg.from!.id}`, via: 'telegram' };

@@ -73,7 +73,10 @@ type Tombol = { text: string; callback_data: string };
 export type Papan = Tombol[][];
 
 async function panggil(metode: string, badan: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-  if (!token()) return null;
+  if (!token()) {
+    console.error(`[telegram] ${metode} dilewati — TELEGRAM_BOT_TOKEN belum diset`);
+    return null;
+  }
   try {
     const res = await fetch(`${API}/bot${token()}/${metode}`, {
       method: 'POST',
@@ -85,7 +88,7 @@ async function panggil(metode: string, badan: Record<string, unknown>): Promise<
     const data = await res.json().catch(() => null) as { ok?: boolean; result?: Record<string, unknown> } | null;
     if (!data?.ok) {
       // Token tidak pernah dicetak — hanya nama metodenya.
-      console.error(`[telegram] ${metode} gagal (${res.status})`);
+      console.error(`[telegram] ${metode} gagal (${res.status})${res.status === 401 ? ' — periksa TELEGRAM_BOT_TOKEN' : ''}`);
       return null;
     }
     return data.result ?? {};
