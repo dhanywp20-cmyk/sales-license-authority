@@ -9,9 +9,9 @@ export const dynamic = 'force-dynamic';
  * lisensi, paket, status, masa berlaku, jumlah fitur, dan pemeriksaan terakhir.
  */
 
-const SARING = ['ACTIVE', 'PENDING', 'EXPIRING_SOON', 'EXPIRED', 'SUSPENDED', 'REVOKED'] as const;
+const SARING = ['ACTIVE', 'PENDING', 'EXPIRING_SOON', 'EXPIRED', 'SUSPENDED', 'REVOKED', 'REPLACED'] as const;
 const LABEL_SARING: Record<string, string> = {
-  ACTIVE: 'Active', PENDING: 'Pending', EXPIRING_SOON: 'Expiring', EXPIRED: 'Expired', SUSPENDED: 'Suspended', REVOKED: 'Revoked',
+  ACTIVE: 'Active', PENDING: 'Pending', EXPIRING_SOON: 'Expiring', EXPIRED: 'Expired', SUSPENDED: 'Suspended', REVOKED: 'Revoked', REPLACED: 'Diganti',
 };
 
 function tgl(iso: string | null) {
@@ -29,7 +29,8 @@ export default async function Dashboard({ searchParams }: { searchParams: { stat
   const q = (searchParams.q ?? '').trim().toLowerCase();
 
   const baris = semua.filter((l) =>
-    (!status || l.status_efektif === status || (status === 'PENDING' && l.pending_request))
+    // "Semua" menyembunyikan lisensi lama yang sudah DIGANTI (lihat filter Diganti).
+    (!status ? l.status_efektif !== 'REPLACED' : l.status_efektif === status || (status === 'PENDING' && l.pending_request))
     && (!q || [l.company_name, l.deployment_code, l.license_code].some((v) => v.toLowerCase().includes(q))));
 
   return (

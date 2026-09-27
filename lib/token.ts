@@ -7,7 +7,8 @@ import type { RingkasanPermintaan } from '@/lib/kontrak/kontrak.ts';
  * Susun dan tandatangani muatan lisensi (§14, §15). Hanya berisi yang
  * dibutuhkan deployment — tidak ada ID internal, hash kunci, atau data pusat lain.
  */
-export function terbitkanToken(info: InfoLisensi, requests: RingkasanPermintaan[], nonce: string): string {
+export function terbitkanToken(info: InfoLisensi, requests: RingkasanPermintaan[], nonce: string,
+  pengganti: string | null = null): string {
   const privat = process.env.LICENSE_PRIVATE_KEY;
   if (!privat) throw new Error('LICENSE_PRIVATE_KEY belum diset.');
 
@@ -30,6 +31,7 @@ export function terbitkanToken(info: InfoLisensi, requests: RingkasanPermintaan[
     requests,
     verified_at: new Date().toISOString(),
     nonce,
+    pengganti,
   };
   return tandatangani(muatan, privat);
 }

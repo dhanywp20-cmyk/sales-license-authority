@@ -3,7 +3,7 @@ import {
   KUNCI_FITUR, adalahKunciFitur, adalahPaket, fiturDariPaket, normalisasiFitur, statusEfektif,
   type KunciFitur, type Paket, type RingkasanPermintaan,
 } from '@/lib/kontrak/kontrak.ts';
-import { hashKunciDeployment } from '@/lib/kontrak/tanda-tangan.ts';
+import { buatKodeAktivasi, hashKunciDeployment } from '@/lib/kontrak/tanda-tangan.ts';
 import { db, rpc } from './db';
 import {
   kirimKeDeveloper, papanPermintaan, teksHasil, teksKedaluwarsa, teksPermintaanBaru,
@@ -63,10 +63,16 @@ function fiturUntuk(paket: Paket, custom: unknown): Record<KunciFitur, boolean> 
 export const LicenseService = {
   /* ── Jalur deployment ───────────────────────────────────────────────── */
 
-  async verify(deployment: string, license: string, kunci: string, versi: string): Promise<HasilVerifikasi> {
+  async verify(deployment: string, license: string, kunci: string, versi: string, instance: string | null): Promise<HasilVerifikasi> {
     return rpc<HasilVerifikasi>('la_verify', {
       p_deployment: deployment, p_license: license, p_key_hash: hashKunciDeployment(kunci), p_app_version: versi,
+      p_instance: instance,
     });
+  },
+
+  /** Lepas ikatan Kode Aktivasi dari platform lama (mis. pelanggan pindah server). */
+  async resetInstance(licenseCode: string, pelaku: Pelaku): Promise<HasilAksi> {
+    return rpc<HasilAksi>('la_reset_instance', { p_license_code: licenseCode, p_actor: pelaku.nama, p_via: pelaku.via });
   },
 
   async createRequest(
@@ -99,8 +105,24 @@ export const LicenseService = {
 
   async approve(requestId: string, pelaku: Pelaku, kunciAksi: string | null = null): Promise<HasilAksi> {
     const { data: r } = await db().from('license_requests')
-      .select('kind, requested_package, requested_features').eq('id', requestId).maybeSingle();
+      .select('kind, status, requested_package, requested_features, duration_days, licenses(license_code, status, license_type)')
+      .eq('id', requestId).maybeSingle();
     if (!r) return { ok: false, code: 'REQUEST_NOT_FOUND' };
+    if (r.status !== 'PENDING_APPROVAL') return { ok: false, code: 'REQUEST_NOT_PENDING', status: r.status as string };
+    const lis = r.licenses as unknown as { license_code: string; status: string; license_type: string } | null;
+
+    // Ganti paket, atau lisensi penuh untuk platform yang sudah berjalan (mis.
+    // trial) = LISENSI BARU. Lisensi lama diganti dan tidak bisa dipakai lagi.
+    const perluBaru = lis && lis.status !== 'PENDING'
+      && (r.kind === 'CHANGE_PACKAGE' || r.kind === 'NEW');
+    if (perluBaru) {
+      const h = await this.reissue(lis!.license_code, r.requested_package as Paket, r.requested_features,
+        r.kind === 'NEW' ? (r.duration_days as number | null) ?? 365 : null,
+        r.kind === 'NEW' ? 'STANDARD' : null, pelaku, kunciAksi ?? `req:${requestId}`, `Permintaan ${requestId}`);
+      if (h.ok && !h.duplicate) await rpc('la_mark_request', { p_request: requestId, p_actor: pelaku.nama, p_via: pelaku.via });
+      return h;
+    }
+
     const fitur = r.kind === 'EXTENSION' ? {} : fiturUntuk(r.requested_package as Paket, r.requested_features);
     return beritahu(await rpc<HasilAksi>('la_approve_request', {
       p_request: requestId, p_features: fitur, p_actor: pelaku.nama, p_via: pelaku.via, p_action_key: kunciAksi,
@@ -114,6 +136,7 @@ export const LicenseService = {
   },
 
   async extend(licenseCode: string, hari: number, pelaku: Pelaku, kunciAksi: string | null = null, alasan: string | null = null): Promise<HasilAksi> {
+    if (await this.sudahDiganti(licenseCode)) return { ok: false, code: 'LICENSE_REPLACED' };
     return beritahu(await rpc<HasilAksi>('la_extend', {
       p_license_code: licenseCode, p_days: hari, p_actor: pelaku.nama, p_via: pelaku.via,
       p_action_key: kunciAksi, p_reason: alasan,
@@ -131,19 +154,51 @@ export const LicenseService = {
   },
 
   async setStatus(licenseCode: string, aksi: 'SUSPEND' | 'REACTIVATE' | 'REVOKE', pelaku: Pelaku, kunciAksi: string | null, alasan: string | null): Promise<HasilAksi> {
+    if (await this.sudahDiganti(licenseCode)) return { ok: false, code: 'LICENSE_REPLACED' };
     return beritahu(await rpc<HasilAksi>('la_set_status', {
       p_license_code: licenseCode, p_action: aksi, p_actor: pelaku.nama, p_via: pelaku.via,
       p_action_key: kunciAksi, p_reason: alasan,
     }));
   },
 
-  /** Upgrade/downgrade ke preset paket. Data pelanggan tidak disentuh (§45). */
-  async setPackage(licenseCode: string, paket: Paket, pelaku: Pelaku, kunciAksi: string | null = null, custom?: unknown): Promise<HasilAksi> {
+  async sudahDiganti(licenseCode: string): Promise<boolean> {
+    const { data } = await db().from('licenses').select('status').eq('license_code', licenseCode).maybeSingle();
+    return data?.status === 'REPLACED';
+  },
+
+  /**
+   * TERBITKAN LISENSI BARU menggantikan yang lama (upgrade, downgrade, ganti
+   * paket/fitur, trial → penuh). Kode & kunci baru; lisensi lama berstatus
+   * DIGANTI dan tidak bisa dipakai lagi. Kode Aktivasi baru dititipkan ke
+   * lisensi lama (handover) supaya platform sah beralih otomatis, dan dikirim
+   * ke Telegram developer sebagai cadangan. Data pelanggan tidak disentuh (§45).
+   */
+  async reissue(
+    licenseCode: string, paket: Paket, custom: unknown, hari: number | null, jenis: 'STANDARD' | 'TRIAL' | null,
+    pelaku: Pelaku, kunciAksi: string | null = null, alasan: string | null = null,
+  ): Promise<HasilAksi & { kode_aktivasi?: string }> {
     if (!adalahPaket(paket)) return { ok: false, code: 'INVALID_PACKAGE' };
-    return beritahu(await rpc<HasilAksi>('la_set_package', {
-      p_license_code: licenseCode, p_package: paket, p_features: fiturUntuk(paket, custom),
-      p_actor: pelaku.nama, p_via: pelaku.via, p_action_key: kunciAksi, p_reason: null,
-    }));
+    const kunci = crypto.randomBytes(32).toString('base64url');
+    const h = await rpc<HasilAksi & { old_license_code?: string }>('la_reissue', {
+      p_old_code: licenseCode, p_package: paket, p_features: fiturUntuk(paket, custom), p_days: hari,
+      p_license_type: jenis, p_key_hash: hashKunciDeployment(kunci), p_actor: pelaku.nama, p_via: pelaku.via,
+      p_action_key: kunciAksi, p_reason: alasan,
+    });
+    if (!h.ok || h.duplicate || !h.license) return h;
+    const kode = buatKodeAktivasi({ deploymentId: h.license.deployment_code, licenseId: h.license.license_code, deploymentKey: kunci });
+    await rpc('la_set_handover', { p_old_code: licenseCode, p_code: kode });
+    await beritahu(h);
+    await kirimKeDeveloper(
+      `🔑 <b>LISENSI BARU DITERBITKAN</b>\n\n${h.license.company_name}\n${licenseCode} → <code>${h.license.license_code}</code>\n`
+      + `Platform pelanggan beralih otomatis. Kode Aktivasi cadangan:\n<code>${kode}</code>`,
+    );
+    return { ...h, kode_aktivasi: kode };
+  },
+
+  /** Upgrade/downgrade ke preset paket = lisensi baru (masa berlaku dibawa). */
+  async setPackage(licenseCode: string, paket: Paket, pelaku: Pelaku, kunciAksi: string | null = null, custom?: unknown,
+    hari: number | null = null, jenis: 'STANDARD' | 'TRIAL' | null = null): Promise<HasilAksi> {
+    return this.reissue(licenseCode, paket, custom, hari, jenis, pelaku, kunciAksi, null);
   },
 
   /** Ubah satu fitur. Lisensi otomatis menjadi CUSTOM — paket hanyalah preset (§9). */
@@ -152,26 +207,27 @@ export const LicenseService = {
     const info = await this.get(licenseCode);
     if (!info) return { ok: false, code: 'LICENSE_NOT_FOUND' };
     const peta = { ...normalisasiFitur(info.features), [fitur]: aktif };
-    return beritahu(await rpc<HasilAksi>('la_set_package', {
-      p_license_code: licenseCode, p_package: 'CUSTOM', p_features: peta,
-      p_actor: pelaku.nama, p_via: pelaku.via, p_action_key: kunciAksi, p_reason: `${fitur}=${aktif ? 'on' : 'off'}`,
-    }));
+    return this.reissue(info.license_code, 'CUSTOM', peta, null, null, pelaku, kunciAksi, `${fitur}=${aktif ? 'on' : 'off'}`);
   },
 
   /* ── Registrasi (§41) ───────────────────────────────────────────────── */
 
   async register(m: {
     company: string; environment: 'production' | 'staging' | 'development';
-    paket: Paket; hari: number; aktifkan: boolean; custom?: unknown;
-  }, pelaku: Pelaku): Promise<{ ok: boolean; code?: string; deployment_code?: string; license_code?: string; deployment_key?: string }> {
+    paket: Paket; hari: number; aktifkan: boolean; custom?: unknown; jenis?: 'STANDARD' | 'TRIAL';
+  }, pelaku: Pelaku): Promise<{ ok: boolean; code?: string; deployment_code?: string; license_code?: string; deployment_key?: string; kode_aktivasi?: string }> {
     // Kunci deployment hanya ada di keluaran fungsi ini — pusat menyimpan hash-nya.
     const kunci = crypto.randomBytes(32).toString('base64url');
     const h = await rpc<{ ok: boolean; deployment_code: string; license_code: string }>('la_register_deployment', {
       p_company: m.company, p_environment: m.environment, p_key_hash: hashKunciDeployment(kunci),
       p_package: m.paket, p_features: fiturUntuk(m.paket, m.custom), p_duration_days: m.hari,
-      p_activate: m.aktifkan, p_actor: pelaku.nama, p_via: pelaku.via,
+      p_activate: m.aktifkan, p_actor: pelaku.nama, p_via: pelaku.via, p_license_type: m.jenis ?? 'STANDARD',
     });
-    return { ...h, deployment_key: h.ok ? kunci : undefined };
+    return {
+      ...h,
+      deployment_key: h.ok ? kunci : undefined,
+      kode_aktivasi: h.ok ? buatKodeAktivasi({ deploymentId: h.deployment_code, licenseId: h.license_code, deploymentKey: kunci }) : undefined,
+    };
   },
 
   /* ── Baca ───────────────────────────────────────────────────────────── */
@@ -184,7 +240,9 @@ export const LicenseService = {
     if (!id) {
       const { data: d } = await db().from('deployments').select('id').eq('deployment_code', k).maybeSingle();
       if (d) {
-        const { data: l2 } = await db().from('licenses').select('id').eq('deployment_id', d.id).maybeSingle();
+        // Satu deployment bisa punya riwayat lisensi (yang lama DIGANTI) — ambil yang terbaru.
+        const { data: l2 } = await db().from('licenses').select('id').eq('deployment_id', d.id)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
         id = l2?.id;
       }
     }

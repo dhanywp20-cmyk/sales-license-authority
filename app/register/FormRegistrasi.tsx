@@ -17,16 +17,21 @@ export function FormRegistrasi() {
       <div className="card">
         <h2>✓ Deployment terdaftar</h2>
         <div className="notice">
-          Salin nilai di bawah ke Environment Variables proyek Vercel pelanggan <b>sekarang</b>. Kunci deployment
-          tidak akan ditampilkan lagi — pusat hanya menyimpan hash-nya.
+          Salin <b>Kode Aktivasi</b> di bawah <b>sekarang</b> dan berikan ke Admin pelanggan. Kode ini tidak akan
+          ditampilkan lagi — pusat hanya menyimpan hash kuncinya. Kode terikat ke platform pertama yang memakainya.
         </div>
-        <pre className="secret">{[
+        <h2>Kode Aktivasi</h2>
+        <p className="muted">Admin pelanggan menempelnya di aplikasi Sales → Admin Panel → Lisensi → Aktifkan.</p>
+        <pre className="secret" style={{ fontSize: 15 }}>{hasil.kode_aktivasi}</pre>
+        <details>
+          <summary className="muted">Alternatif untuk developer: isi Environment Variables Vercel pelanggan</summary>
+          <pre className="secret">{[
           `LICENSE_AUTHORITY_URL=${typeof window !== 'undefined' ? window.location.origin : ''}`,
           `LICENSE_DEPLOYMENT_ID=${hasil.deployment_code}`,
           `LICENSE_ID=${hasil.license_code}`,
           `LICENSE_DEPLOYMENT_KEY=${hasil.deployment_key}`,
-          'LICENSE_PUBLIC_KEY=<kunci publik dari npm run keys>',
         ].join('\n')}</pre>
+        </details>
         <p><a href={`/l/${hasil.license_code}`}>Buka lisensi {hasil.license_code} →</a></p>
       </div>
     );
@@ -44,7 +49,13 @@ export function FormRegistrasi() {
             <option value="development">development</option>
           </select>
         </label>
-        <label>Durasi (hari)<br /><input name="hari" type="number" min={1} max={3660} defaultValue={365} required /></label>
+        <label>Jenis lisensi<br />
+          <select name="jenis" defaultValue="STANDARD">
+            <option value="STANDARD">Standar (berbayar)</option>
+            <option value="TRIAL">Trial</option>
+          </select>
+        </label>
+        <label>Durasi (hari — bebas, mis. trial 7 / 14 / 30)<br /><input name="hari" type="number" min={1} max={3660} defaultValue={365} required /></label>
       </div>
       <PilihPaketFitur />
       <p><label><input type="checkbox" name="aktifkan" /> Langsung aktifkan (tanpa menunggu permintaan dari Admin pelanggan)</label></p>

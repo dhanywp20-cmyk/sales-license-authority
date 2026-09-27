@@ -30,7 +30,8 @@ export default async function DetailLisensi({ params, searchParams }: { params: 
   ]);
   const status = statusEfektif(info.status, info.expires_at, new Date(), info.warning_days);
   const lic = info.license_code;
-  const dicabut = info.status === 'REVOKED';
+  // Lisensi yang dicabut atau sudah DIGANTI bersifat final — tidak ada tindakan lagi.
+  const dicabut = info.status === 'REVOKED' || info.status === 'REPLACED';
 
   return (
     <>
@@ -38,17 +39,28 @@ export default async function DetailLisensi({ params, searchParams }: { params: 
       {searchParams.pesan && <div className="notice">{searchParams.pesan}</div>}
       <h1>{info.company_name} <span className={`badge ${status}`}>{status.replace('_', ' ')}</span></h1>
 
+      {info.status === 'REPLACED' && (
+        <div className="notice">
+          Lisensi ini sudah <b>DIGANTI</b> dan tidak bisa dipakai lagi.
+          {info.replaced_by_code && <> Lisensi pengganti: <a href={`/l/${info.replaced_by_code}`}>{info.replaced_by_code} →</a></>}
+        </div>
+      )}
+      {info.replaces_code && (
+        <p className="muted">Menggantikan lisensi <a href={`/l/${info.replaces_code}`}>{info.replaces_code}</a>.</p>
+      )}
+
       <section className="card">
         <dl className="grid kv">
           <div><dt>Deployment</dt><dd>{info.deployment_code}</dd></div>
           <div><dt>Lisensi</dt><dd>{lic}</dd></div>
-          <div><dt>Paket</dt><dd>{LABEL_PAKET[info.package]} ({info.license_type})</dd></div>
+          <div><dt>Paket</dt><dd>{LABEL_PAKET[info.package]} {info.license_type === 'TRIAL' && <span className="badge TRIAL">TRIAL</span>}</dd></div>
           <div><dt>Diterbitkan</dt><dd>{tgl(info.issued_at)}</dd></div>
           <div><dt>Mulai</dt><dd>{tgl(info.starts_at)}</dd></div>
           <div><dt>Berakhir</dt><dd>{tgl(info.expires_at)}</dd></div>
           <div><dt>Tenggang</dt><dd>{info.grace_period_days} hari</dd></div>
           <div><dt>Pemeriksaan terakhir</dt><dd>{tgl(info.last_verified_at)}</dd></div>
           <div><dt>Versi aplikasi</dt><dd>{info.application_version ?? '—'}</dd></div>
+          <div><dt>Kode Aktivasi</dt><dd>{info.instance_bound ? 'Terikat ke 1 platform' : 'Belum dipakai'}</dd></div>
         </dl>
       </section>
 
@@ -74,6 +86,12 @@ export default async function DetailLisensi({ params, searchParams }: { params: 
               <button>Tangguhkan</button>
             </form>
           )}
+          {info.instance_bound && (
+            <form action={aksiLisensi} className="inline">
+              <Tersembunyi lic={lic} aksi="unbind" />
+              <button title="Izinkan kode dipakai di platform baru (mis. pelanggan pindah server)">Lepas ikatan platform</button>
+            </form>
+          )}
           <form action={aksiLisensi} className="inline">
             <Tersembunyi lic={lic} aksi="revoke" />
             <input name="konfirmasi" placeholder={`ketik ${lic}`} />
@@ -89,9 +107,24 @@ export default async function DetailLisensi({ params, searchParams }: { params: 
           <form action={aksiLisensi}>
             <Tersembunyi lic={lic} aksi="package" />
             <PilihPaketFitur awalPaket={info.package} awalFitur={info.features} />
-            <p><button className="primary">Simpan paket/fitur</button></p>
+            <div className="grid">
+              <label>Jenis lisensi baru<br />
+                <select name="jenis" defaultValue={info.license_type === 'TRIAL' ? 'STANDARD' : info.license_type}>
+                  <option value="STANDARD">Standar (berbayar)</option>
+                  <option value="TRIAL">Trial</option>
+                </select>
+              </label>
+              <label>Durasi baru (hari, kosong = sisa masa berlaku)<br />
+                <input name="hari" type="number" min={1} max={3660} placeholder="mis. 365" />
+              </label>
+            </div>
+            <p><button className="primary">Terbitkan lisensi baru</button></p>
           </form>
-          <p className="muted">Downgrade hanya menutup akses. Data pelanggan tidak pernah dihapus.</p>
+          <p className="muted">
+            Setiap perubahan paket/fitur atau trial → penuh menerbitkan <b>lisensi baru</b> (kode baru). Lisensi ini
+            menjadi DIGANTI dan tidak bisa dipakai ulang. Platform pelanggan beralih otomatis pada pemeriksaan
+            berikutnya. Downgrade hanya menutup akses — data pelanggan tidak pernah dihapus.
+          </p>
         </section>
       )}
 

@@ -24,6 +24,11 @@ export interface InfoLisensi {
   max_version: string | null;
   last_verified_at: string | null;
   application_version: string | null;
+  /** Kode Aktivasi sudah terikat ke satu platform. */
+  instance_bound?: boolean;
+  /** Lisensi yang menggantikan / digantikan (reissue). */
+  replaced_by_code?: string | null;
+  replaces_code?: string | null;
   features: Partial<Record<KunciFitur, boolean>>;
 }
 
@@ -46,4 +51,6 @@ export interface HasilVerifikasi {
   code?: string;
   license?: InfoLisensi;
   requests?: RingkasanPermintaan[];
+  /** Kode Aktivasi pengganti — hanya ada bila lisensi ini sudah DIGANTI. */
+  handover_code?: string | null;
 }
