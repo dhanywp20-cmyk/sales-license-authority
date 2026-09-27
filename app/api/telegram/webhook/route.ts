@@ -36,6 +36,7 @@ const POLA_CALLBACK: [RegExp, string][] = [
   [new RegExp(`^rv:(${LIC})$`), 'rv'],
   [new RegExp(`^rk:(${LIC}):([0-9a-f]{6})$`), 'rk'],
   [new RegExp(`^pk:(${LIC}):(STARTER|PROFESSIONAL|BUSINESS|ENTERPRISE):([0-9a-f]{6})$`), 'pk'],
+  [new RegExp(`^tf:(${LIC}):([0-9a-f]{6})$`), 'tf'],
 ];
 
 interface TgPengguna { id: number }
@@ -55,6 +56,9 @@ function ringkas(h: HasilAksi): string {
     REQUEST_NOT_FOUND: 'Permintaan tidak ditemukan.',
     LICENSE_NOT_FOUND: 'Lisensi tidak ditemukan.',
     LICENSE_REVOKED: 'Lisensi sudah dicabut permanen.',
+    LICENSE_REPLACED: 'Lisensi ini sudah DIGANTI lisensi baru — kelola lisensi penggantinya.',
+    INVALID_DURATION: 'Durasi tidak sah.',
+    INVALID_TYPE: 'Jenis lisensi tidak sah.',
     NOT_SUSPENDED: 'Lisensi tidak sedang ditangguhkan.',
     INVALID_FEATURE: 'Fitur tidak dikenal.',
     INVALID_PACKAGE: 'Paket tidak dikenal.',
@@ -117,6 +121,14 @@ async function tanganiCallback(cb: NonNullable<TgUpdate['callback_query']>) {
     case 're': h = await LicenseService.reactivate(m[1], pelaku, kunci); break;
     case 'rk': h = await LicenseService.revoke(m[1], pelaku, kunci, 'Dicabut lewat Telegram'); break;
     case 'pk': h = await LicenseService.setPackage(m[1], m[2] as Paket, pelaku, kunci); break;
+    case 'tf': {
+      // Trial → penuh: lisensi baru berjenis STANDAR, paket & fitur sama, 1 tahun.
+      const info = await LicenseService.get(m[1]);
+      h = info && info.license_code === m[1]
+        ? await LicenseService.setPackage(m[1], info.package, pelaku, kunci, info.features, 365, 'STANDARD')
+        : { ok: false, code: 'LICENSE_NOT_FOUND' };
+      break;
+    }
     case 'rv':
       await jawabCallback(cb.id, 'Konfirmasi diperlukan.');
       if (chat) await balas(chat, `⛔ Cabut lisensi <code>${esc(m[1])}</code> secara PERMANEN?`, papanKonfirmasiCabut(m[1]));
@@ -174,9 +186,9 @@ async function tanganiPerintah(msg: TgPesan) {
 
     case '/list': {
       const saring = (arg[0] ?? '').toUpperCase();
-      const peta: Record<string, string> = { ACTIVE: 'ACTIVE', PENDING: 'PENDING', EXPIRING: 'EXPIRING_SOON', EXPIRED: 'EXPIRED', SUSPENDED: 'SUSPENDED', REVOKED: 'REVOKED' };
+      const peta: Record<string, string> = { ACTIVE: 'ACTIVE', PENDING: 'PENDING', EXPIRING: 'EXPIRING_SOON', EXPIRED: 'EXPIRED', SUSPENDED: 'SUSPENDED', REVOKED: 'REVOKED', REPLACED: 'REPLACED' };
       const semua = await LicenseService.list();
-      const pilih = saring && peta[saring] ? semua.filter((l) => l.status_efektif === peta[saring]) : semua;
+      const pilih = saring && peta[saring] ? semua.filter((l) => l.status_efektif === peta[saring]) : semua.filter((l) => l.status_efektif !== 'REPLACED');
       if (pilih.length === 0) { await balas(chat, 'Tidak ada lisensi.'); return; }
       await balas(chat, pilih.slice(0, 40).map((l) =>
         `• <b>${esc(l.company_name)}</b> <code>${esc(l.license_code)}</code> ${esc(l.package)} · ${esc(l.status_efektif)} · s/d ${tgl(l.expires_at)}`).join('\n'));
@@ -224,6 +236,14 @@ async function tanganiPerintah(msg: TgPesan) {
       await hasilKe(perintah === '/suspend'
         ? await LicenseService.suspend(info.license_code, pelaku, null, alasan)
         : await LicenseService.reactivate(info.license_code, pelaku));
+      return;
+    }
+
+    case '/unbind': {
+      const info = kode ? await LicenseService.get(kode) : null;
+      if (!info) { await balas(chat, 'Format: /unbind KODE'); return; }
+      const h = await LicenseService.resetInstance(info.license_code, pelaku);
+      await balas(chat, h.ok ? `🔓 Ikatan platform <code>${esc(info.license_code)}</code> dilepas. Kode Aktivasi bisa dipakai di platform baru.` : esc(ringkas(h)));
       return;
     }
 

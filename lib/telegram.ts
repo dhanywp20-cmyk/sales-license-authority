@@ -139,6 +139,8 @@ export function papanPermintaan(requestId: string): Papan {
 
 export function papanLisensi(info: InfoLisensi): Papan {
   const lic = info.license_code;
+  // Lisensi yang sudah DIGANTI / dicabut bersifat final — tidak ada tombol.
+  if (info.status === 'REPLACED' || info.status === 'REVOKED') return [];
   const n = nonce();
   const baris: Papan = [[
     { text: '+30 DAYS', callback_data: `ex:${lic}:30:${n}` },
@@ -147,12 +149,15 @@ export function papanLisensi(info: InfoLisensi): Papan {
   ]];
   if (info.status === 'SUSPENDED') {
     baris.push([{ text: '▶ REACTIVATE', callback_data: `re:${lic}:${n}` }]);
-  } else if (info.status !== 'REVOKED') {
+  } else {
     baris.push([{ text: '⏸ SUSPEND', callback_data: `su:${lic}:${n}` }]);
   }
   const paketLain = PAKET.filter((p) => p !== 'CUSTOM' && p !== info.package);
   baris.push(paketLain.map((p) => ({ text: `→ ${LABEL_PAKET[p]}`, callback_data: `pk:${lic}:${p}:${n}` })));
-  if (info.status !== 'REVOKED') baris.push([{ text: '⛔ REVOKE', callback_data: `rv:${lic}` }]);
+  if (info.license_type === 'TRIAL') {
+    baris.push([{ text: `⭐ Trial → Penuh 1 tahun (${LABEL_PAKET[info.package]})`, callback_data: `tf:${lic}:${n}` }]);
+  }
+  baris.push([{ text: '⛔ REVOKE', callback_data: `rv:${lic}` }]);
   return baris;
 }
 
@@ -244,5 +249,6 @@ export const TEKS_BANTUAN = [
   '/reactivate KODE',
   '/revoke KODE — meminta konfirmasi',
   '/package KODE STARTER|PROFESSIONAL|BUSINESS|ENTERPRISE',
+  '/unbind KODE — lepas ikatan Kode Aktivasi dari platform lama',
   '/feature KODE fitur on|off — mengubah ke CUSTOM',
 ].join('\n');

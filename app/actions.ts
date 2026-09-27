@@ -51,6 +51,7 @@ export async function aksiLisensi(f: FormData) {
     case 'extend': h = await LicenseService.extend(lic, Number(teks(f, 'hari')), PELAKU, k, alasan); break;
     case 'suspend': h = await LicenseService.suspend(lic, PELAKU, k, alasan); break;
     case 'reactivate': h = await LicenseService.reactivate(lic, PELAKU, k); break;
+    case 'unbind': h = await LicenseService.resetInstance(lic, PELAKU); break;
     case 'revoke':
       if (teks(f, 'konfirmasi') !== lic) kembali(lic, 'Ketik kode lisensi untuk mengonfirmasi pencabutan.');
       h = await LicenseService.revoke(lic, PELAKU, k, alasan);
@@ -59,7 +60,15 @@ export async function aksiLisensi(f: FormData) {
       const p = teks(f, 'paket');
       if (!adalahPaket(p)) kembali(lic, 'Paket tidak dikenal.');
       const custom = Object.fromEntries(KUNCI_FITUR.map((x) => [x, f.get(`fitur_${x}`) === 'on']));
-      h = await LicenseService.setPackage(lic, p as Paket, PELAKU, k, custom);
+      const hariBaru = Number(teks(f, 'hari'));
+      const jenisBaru = teks(f, 'jenis');
+      h = await LicenseService.setPackage(lic, p as Paket, PELAKU, k, custom,
+        Number.isInteger(hariBaru) && hariBaru >= 1 && hariBaru <= 3660 ? hariBaru : null,
+        jenisBaru === 'TRIAL' || jenisBaru === 'STANDARD' ? jenisBaru : null);
+      if (h.ok && !h.duplicate && h.license) {
+        kembali(h.license.license_code, `Lisensi baru ${h.license.license_code} diterbitkan menggantikan ${lic}. `
+          + 'Platform pelanggan beralih otomatis; Kode Aktivasi cadangan dikirim ke Telegram.');
+      }
       break;
     }
     default: kembali(lic, 'Tindakan tidak dikenal.');
@@ -72,6 +81,7 @@ export interface HasilRegistrasi {
   deployment_code?: string;
   license_code?: string;
   deployment_key?: string;
+  kode_aktivasi?: string;
 }
 
 /**
@@ -83,6 +93,7 @@ export async function aksiRegistrasi(_: HasilRegistrasi, f: FormData): Promise<H
   const paket = teks(f, 'paket');
   const hari = Number(teks(f, 'hari'));
   const lingkungan = teks(f, 'environment');
+  const jenis = teks(f, 'jenis') === 'TRIAL' ? 'TRIAL' : 'STANDARD';
   if (perusahaan.length < 2 || !adalahPaket(paket) || !Number.isInteger(hari) || hari < 1 || hari > 3660
       || !['production', 'staging', 'development'].includes(lingkungan)) {
     return { galat: 'Isian tidak lengkap atau tidak sah.' };
@@ -92,7 +103,7 @@ export async function aksiRegistrasi(_: HasilRegistrasi, f: FormData): Promise<H
   try {
     h = await LicenseService.register({
       company: perusahaan, environment: lingkungan as 'production', paket: paket as Paket, hari,
-      aktifkan: f.get('aktifkan') === 'on', custom,
+      aktifkan: f.get('aktifkan') === 'on', custom, jenis,
     }, PELAKU);
   } catch (e) {
     console.error('[registrasi] gagal:', e instanceof Error ? e.message : 'unknown');
@@ -100,5 +111,5 @@ export async function aksiRegistrasi(_: HasilRegistrasi, f: FormData): Promise<H
   }
   revalidatePath('/');
   if (!h.ok || !h.deployment_key) return { galat: `Registrasi gagal: ${h.code ?? 'unknown'}` };
-  return { deployment_code: h.deployment_code, license_code: h.license_code, deployment_key: h.deployment_key };
+  return { deployment_code: h.deployment_code, license_code: h.license_code, deployment_key: h.deployment_key, kode_aktivasi: h.kode_aktivasi };
 }
