@@ -10,7 +10,7 @@ Arsitektur lengkap, variabel lingkungan, dan checklist produksi:
 ```bash
 npm install
 npm run keys          # pasangan kunci Ed25519 + rahasia acak
-npm run dev           # http://localhost:3100 (Basic Auth: developer / CENTRAL_ADMIN_SECRET)
+npm run dev           # http://localhost:3100 (login di /masuk, sandi = CENTRAL_ADMIN_SECRET)
 npm run typecheck && npm run build
 ```
 

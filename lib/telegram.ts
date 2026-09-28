@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { LABEL_PAKET, PAKET, type Paket } from '@/lib/kontrak/kontrak.ts';
 import type { HasilAksi, InfoLisensi } from './types';
+import { labelDurasi } from './durasi';
 
 /**
  * TelegramApprovalService — satu-satunya tempat yang tahu soal Telegram (§19).
@@ -143,9 +144,9 @@ export function papanLisensi(info: InfoLisensi): Papan {
   if (info.status === 'REPLACED' || info.status === 'REVOKED') return [];
   const n = nonce();
   const baris: Papan = [[
-    { text: '+30 DAYS', callback_data: `ex:${lic}:30:${n}` },
-    { text: '+90 DAYS', callback_data: `ex:${lic}:90:${n}` },
-    { text: '+1 YEAR', callback_data: `ex:${lic}:365:${n}` },
+    { text: '+1 Bulan', callback_data: `ex:${lic}:30:${n}` },
+    { text: '+3 Bulan', callback_data: `ex:${lic}:90:${n}` },
+    { text: '+1 Tahun', callback_data: `ex:${lic}:365:${n}` },
   ]];
   if (info.status === 'SUSPENDED') {
     baris.push([{ text: '▶ REACTIVATE', callback_data: `re:${lic}:${n}` }]);
@@ -192,7 +193,7 @@ export function teksPengajuanBaru(r: {
   days: number | null; notes: string | null; instance: string; terdaftar: string | null;
 }): string {
   const durasi = r.trial ? 'Trial (hari ditentukan developer)'
-    : r.days ? (r.days % 365 === 0 ? `${r.days / 365} tahun` : `${r.days} hari`) : '—';
+    : labelDurasi(r.days);
   return [
     '📝 <b>PENGAJUAN LISENSI BARU</b>',
     '',
@@ -217,9 +218,7 @@ export function teksPermintaanBaru(info: InfoLisensi, r: {
 }): string {
   const judul = r.kind === 'EXTENSION' ? 'LICENSE EXTENSION REQUEST'
     : r.kind === 'CHANGE_PACKAGE' ? 'LICENSE CHANGE REQUEST' : 'NEW LICENSE REQUEST';
-  const durasi = r.duration_days
-    ? (r.duration_days % 365 === 0 ? `${r.duration_days / 365} Year` : `${r.duration_days} Days`)
-    : '—';
+  const durasi = labelDurasi(r.duration_days);
   return [
     `🔐 <b>${judul}</b>`,
     '',
