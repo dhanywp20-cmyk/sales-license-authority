@@ -34,6 +34,11 @@ export interface BarisAudit {
   created_at: string;
 }
 
+export type BarisAuditTerbaru = BarisAudit & {
+  licenses: { license_code: string } | null;
+  deployments: { company_name: string } | null;
+};
+
 export type BarisDaftar = InfoLisensi & { status_efektif: string; jumlah_fitur: number; pending_request: string | null };
 
 /**
@@ -315,6 +320,14 @@ export const LicenseService = {
       .select('id, action, previous_state, new_state, performed_by, performed_via, reason, created_at')
       .eq('license_id', l.id).order('created_at', { ascending: false }).limit(100);
     return (data ?? []) as BarisAudit[];
+  },
+
+  /** Aktivitas terbaru di semua lisensi (Ringkasan). */
+  async auditTerbaru(batas = 12): Promise<BarisAuditTerbaru[]> {
+    const { data } = await db().from('license_audit_logs')
+      .select('id, action, previous_state, new_state, performed_by, performed_via, reason, created_at, licenses(license_code), deployments(company_name)')
+      .order('created_at', { ascending: false }).limit(batas);
+    return (data ?? []) as unknown as BarisAuditTerbaru[];
   },
 
   async requestsFor(licenseCode: string): Promise<RingkasanPermintaan[]> {

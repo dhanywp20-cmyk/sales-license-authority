@@ -10,7 +10,7 @@ import type { Pelaku } from '@/lib/types';
  * Server action dashboard web. Memanggil LicenseService yang SAMA dengan
  * Telegram (§48). Setiap formulir membawa `aksi_id` acak yang dibuat saat
  * halaman dirender — kiriman ganda formulir yang sama tidak diterapkan dua
- * kali (§49). Dilindungi Basic Auth di middleware; Next.js juga menolak
+ * kali (§49). Dilindungi sesi login (middleware + /masuk); Next.js juga menolak
  * server action dari origin lain.
  */
 
@@ -26,8 +26,7 @@ function kunciAksi(f: FormData): string | null {
 }
 
 function kembali(kode: string, pesan: string): never {
-  revalidatePath('/');
-  revalidatePath(`/l/${kode}`);
+  revalidatePath('/', 'layout');
   redirect(`/l/${encodeURIComponent(kode)}?pesan=${encodeURIComponent(pesan)}`);
 }
 
@@ -109,7 +108,7 @@ export async function aksiRegistrasi(_: HasilRegistrasi, f: FormData): Promise<H
     console.error('[registrasi] gagal:', e instanceof Error ? e.message : 'unknown');
     return { galat: 'Database pusat tidak bisa diakses. Buka menu Pemeriksaan untuk melihat penyebabnya.' };
   }
-  revalidatePath('/');
+  revalidatePath('/', 'layout');
   if (!h.ok || !h.deployment_key) return { galat: `Registrasi gagal: ${h.code ?? 'unknown'}` };
   return { deployment_code: h.deployment_code, license_code: h.license_code, deployment_key: h.deployment_key, kode_aktivasi: h.kode_aktivasi };
 }
