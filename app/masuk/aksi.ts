@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { db, rpc } from '@/lib/db';
-import { COOKIE_SESI, UMUR_SESI_DETIK, buatTokenSesi, sandiBenar } from '@/lib/sesi';
+import { COOKIE_SESI, UMUR_SESI_DETIK, buatTokenSesi, sandiBenar, usernameBenar } from '@/lib/sesi';
 
 const BATAS_GAGAL = 10;
 const JENDELA_MENIT = 15;
@@ -29,11 +29,14 @@ export async function aksiMasuk(_: { galat?: string }, f: FormData): Promise<{ g
   if ((await jumlahGagal()) >= BATAS_GAGAL) {
     return { galat: `Terlalu banyak percobaan gagal. Coba lagi dalam ${JENDELA_MENIT} menit.` };
   }
+  const username = String(f.get('username') ?? '');
   const sandi = String(f.get('sandi') ?? '');
-  if (!sandi || !(await sandiBenar(sandi))) {
+  // Keduanya selalu diperiksa, dan pesannya sama — tidak membocorkan mana yang salah.
+  const [userOk, sandiOk] = await Promise.all([usernameBenar(username), sandiBenar(sandi)]);
+  if (!username || !sandi || !userOk || !sandiOk) {
     try { await rpc('la_claim_once', { p_key: `login-gagal:${Date.now()}:${crypto.randomUUID()}` }); } catch { /* lihat jumlahGagal */ }
     await new Promise((r) => setTimeout(r, 800));
-    return { galat: 'Kata sandi salah.' };
+    return { galat: 'Username atau kata sandi salah.' };
   }
   cookies().set(COOKIE_SESI, await buatTokenSesi(), {
     httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: UMUR_SESI_DETIK,

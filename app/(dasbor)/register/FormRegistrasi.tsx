@@ -21,8 +21,9 @@ export function FormRegistrasi({ awal }: {
       <div className="card">
         <h2>✓ Deployment terdaftar</h2>
         <div className="notice">
-          Salin <b>Kode Aktivasi</b> di bawah <b>sekarang</b> dan berikan ke Admin pelanggan. Kode ini tidak akan
-          ditampilkan lagi — pusat hanya menyimpan hash kuncinya. Kode terikat ke platform pertama yang memakainya.
+          Berikan <b>Kode Aktivasi</b> di bawah ke Admin pelanggan. Kode tersimpan terenkripsi dan bisa dilihat lagi di
+          halaman lisensinya (atau <a href="/ekspor-kode">Ekspor kode</a>); salinannya juga dikirim ke Telegram Anda.
+          Kode terikat ke platform pertama yang memakainya.
         </div>
         <h2>Kode Aktivasi</h2>
         <p className="muted">Admin pelanggan menempelnya di aplikasi Sales → Admin Panel → Lisensi → Aktifkan.</p>
@@ -42,7 +43,7 @@ export function FormRegistrasi({ awal }: {
   }
 
   return (
-    <form action={aksi} className="card">
+    <form action={aksi} className="card" data-tanpa-progres>
       {hasil.galat && <div className="notice">{hasil.galat}</div>}
       <div className="grid">
         <label>Nama perusahaan<br /><input name="company" required minLength={2} maxLength={160} placeholder="PT ABC" defaultValue={awal?.company} /></label>
@@ -56,7 +57,7 @@ export function FormRegistrasi({ awal }: {
         <PilihJenisDurasi awalJenis={awal?.jenis ?? 'STANDARD'} awalHari={awal?.hari} />
       </div>
       <PilihPaketFitur awalPaket={awal?.paket} />
-      <p><label><input type="checkbox" name="aktifkan" /> Langsung aktifkan (tanpa menunggu permintaan dari Admin pelanggan)</label></p>
+      <p className="muted">Lisensi langsung <b>aktif</b> sejak kode ditempel pelanggan — menerbitkan kode berarti Anda sudah menyetujuinya.</p>
       <Kirim />
     </form>
   );

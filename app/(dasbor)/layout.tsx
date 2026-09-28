@@ -1,6 +1,8 @@
 import { LicenseService } from '@/lib/license-service';
 import { aksiKeluar } from '@/app/masuk/aksi';
+import { Suspense } from 'react';
 import { Sidebar } from './Sidebar';
+import { ProgresNavigasi } from '@/app/ProgresNavigasi';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +19,8 @@ export default async function LayoutDasbor({ children }: { children: React.React
   );
 
   return (
-    <div className="kerangka">
+    <div className="kerangka-app">
+      <Suspense fallback={null}><ProgresNavigasi /></Suspense>
       <header className="atas">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="" width={32} height={32} />

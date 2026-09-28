@@ -17,7 +17,7 @@ export const LABEL_AKSI: Record<string, string> = {
   CREATED: 'Lisensi dibuat', APPROVED: 'Disetujui', REJECTED: 'Ditolak', EXTENDED: 'Diperpanjang',
   UPGRADED: 'Upgrade', DOWNGRADED: 'Downgrade', CHANGED: 'Diubah', SUSPENDED: 'Ditangguhkan',
   REACTIVATED: 'Diaktifkan kembali', REVOKED: 'Dicabut', REPLACED: 'Diganti lisensi baru', EXPIRED: 'Berakhir',
-  INSTANCE_BOUND: 'Kode dipakai platform', INSTANCE_RESET: 'Ikatan platform dilepas',
+  INSTANCE_BOUND: 'Kode dipakai platform', CODE_REISSUED: 'Kode dibuat ulang', INSTANCE_RESET: 'Ikatan platform dilepas',
   REQUESTED: 'Permintaan masuk', REQUEST_APPROVED: 'Permintaan disetujui', REQUEST_CANCELLED: 'Permintaan dibatalkan',
 };
 

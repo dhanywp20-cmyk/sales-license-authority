@@ -5,6 +5,7 @@ import {
 } from '@/lib/kontrak/kontrak.ts';
 import { buatKodeAktivasi, hashKunciDeployment } from '@/lib/kontrak/tanda-tangan.ts';
 import { db, rpc } from './db';
+import { bukaKode, kunciKode } from './brankas-kode';
 import {
   kirimKeDeveloper, papanPermintaan, teksHasil, teksKedaluwarsa, teksPengajuanBaru, teksPermintaanBaru,
 } from './telegram';
@@ -69,10 +70,37 @@ export const LicenseService = {
   /* ── Jalur deployment ───────────────────────────────────────────────── */
 
   async verify(deployment: string, license: string, kunci: string, versi: string, instance: string | null): Promise<HasilVerifikasi> {
-    return rpc<HasilVerifikasi>('la_verify', {
+    const periksa = () => rpc<HasilVerifikasi>('la_verify', {
       p_deployment: deployment, p_license: license, p_key_hash: hashKunciDeployment(kunci), p_app_version: versi,
       p_instance: instance,
     });
+    const h = await periksa();
+    // Platform masih terikat ke pendaftaran lama yang SUDAH DICABUT developer:
+    // lepaskan ikatan itu lalu coba lagi, supaya Kode Aktivasi baru bisa dipakai.
+    // Pendaftaran yang masih hidup/berakhir tetap mengunci platform (trial tidak bisa diulang).
+    if (!h.ok && h.code === 'PLATFORM_TAKEN' && instance && await this.lepasPlatformDicabut(instance)) {
+      return periksa();
+    }
+    return h;
+  },
+
+  /** true bila platform ini hanya terikat ke deployment yang semua lisensinya DICABUT, dan ikatannya sudah dilepas. */
+  async lepasPlatformDicabut(instance: string): Promise<boolean> {
+    const { data: dep } = await db().from('deployments').select('id').eq('instance_hash', instance).maybeSingle();
+    if (!dep) return false;
+    const { data: lis } = await db().from('licenses').select('id, status').eq('deployment_id', dep.id);
+    const semua = (lis ?? []) as { id: string; status: string }[];
+    if (semua.length === 0 || semua.some((l) => l.status !== 'REVOKED' && l.status !== 'REPLACED')
+        || !semua.some((l) => l.status === 'REVOKED')) return false;
+    const { data: lepas } = await db().from('deployments').update({ instance_hash: null })
+      .eq('id', dep.id).eq('instance_hash', instance).select('id');
+    if (!lepas?.length) return false;
+    const terakhir = semua.find((l) => l.status === 'REVOKED')!;
+    await rpc('la_audit', {
+      p_license: terakhir.id, p_action: 'INSTANCE_RESET', p_prev: null, p_new: null,
+      p_actor: 'system', p_via: 'system', p_reason: 'Platform dipakai lisensi baru setelah lisensi ini dicabut',
+    });
+    return true;
   },
 
   /** Lepas ikatan Kode Aktivasi dari platform lama (mis. pelanggan pindah server). */
@@ -148,6 +176,39 @@ export const LicenseService = {
     }));
   },
 
+  /**
+   * Aktifkan lisensi yang masih MENUNGGU AKTIVASI (dibuat tanpa langsung aktif
+   * di versi lama). Pembaruan bersyarat `status = PENDING` membuatnya aman
+   * diketuk dua kali. Permintaan "lisensi baru" dari platform ikut ditandai disetujui.
+   */
+  async activate(licenseCode: string, hari: number, pelaku: Pelaku): Promise<HasilAksi> {
+    if (!Number.isInteger(hari) || hari < 1 || hari > 3660) return { ok: false, code: 'INVALID_DURATION' };
+    const sekarang = new Date();
+    const { data, error } = await db().from('licenses')
+      .update({
+        status: 'ACTIVE', issued_at: sekarang.toISOString(), starts_at: sekarang.toISOString(),
+        expires_at: new Date(sekarang.getTime() + hari * 86_400_000).toISOString(), updated_at: sekarang.toISOString(),
+      })
+      .eq('license_code', licenseCode).eq('status', 'PENDING').select('id');
+    if (error) throw new Error(`activate: ${error.message}`);
+    const id = (data as { id: string }[] | null)?.[0]?.id;
+    if (!id) {
+      const info = await this.get(licenseCode);
+      return info ? { ok: true, unchanged: true, status: info.status, license: info } : { ok: false, code: 'LICENSE_NOT_FOUND' };
+    }
+    await rpc('la_audit', {
+      p_license: id, p_action: 'APPROVED', p_prev: null, p_new: await rpc('la_snapshot', { p_license: id }),
+      p_actor: pelaku.nama, p_via: pelaku.via, p_reason: `Diaktifkan developer (${hari} hari)`,
+    });
+    const { data: minta } = await db().from('license_requests').select('id')
+      .eq('license_id', id).eq('status', 'PENDING_APPROVAL');
+    for (const r of (minta ?? []) as { id: string }[]) {
+      await rpc('la_mark_request', { p_request: r.id, p_actor: pelaku.nama, p_via: pelaku.via });
+    }
+    const info = await this.get(licenseCode);
+    return beritahu({ ok: true, action: 'APPROVED', license: info ?? undefined });
+  },
+
   async suspend(licenseCode: string, pelaku: Pelaku, kunciAksi: string | null = null, alasan: string | null = null) {
     return this.setStatus(licenseCode, 'SUSPEND', pelaku, kunciAksi, alasan);
   },
@@ -192,6 +253,7 @@ export const LicenseService = {
     if (!h.ok || h.duplicate || !h.license) return h;
     const kode = buatKodeAktivasi({ deploymentId: h.license.deployment_code, licenseId: h.license.license_code, deploymentKey: kunci });
     await rpc('la_set_handover', { p_old_code: licenseCode, p_code: kode });
+    await this.simpanKode(h.license.license_code, kode);
     await beritahu(h);
     await kirimKeDeveloper(
       `🔑 <b>LISENSI BARU DITERBITKAN</b>\n\n${h.license.company_name}\n${licenseCode} → <code>${h.license.license_code}</code>\n`
@@ -236,17 +298,82 @@ export const LicenseService = {
       return { ok: false, code: 'RATE_LIMITED' };
     }
 
-    const { data: dep } = await db().from('deployments').select('deployment_code, company_name')
+    const { data: dep } = await db().from('deployments').select('id, deployment_code, company_name')
       .eq('instance_hash', m.instance).maybeSingle();
-    const terdaftar = dep ? `${dep.deployment_code} (${dep.company_name})` : null;
+    let terdaftar: string | null = null;
+    let dicabut = false;
+    if (dep) {
+      const { data: lis } = await db().from('licenses').select('status').eq('deployment_id', dep.id);
+      const st = ((lis ?? []) as { status: string }[]).map((l) => l.status);
+      dicabut = st.includes('REVOKED') && st.every((x) => x === 'REVOKED' || x === 'REPLACED');
+      terdaftar = `${dep.deployment_code} (${dep.company_name})`;
+    }
 
     const q = new URLSearchParams({ company: m.company, paket: m.package, jenis: m.trial ? 'TRIAL' : 'STANDARD' });
     if (!m.trial && m.days) q.set('hari', String(m.days));
-    const pesan = teksPengajuanBaru({ ...m, terdaftar });
+    const pesan = teksPengajuanBaru({ ...m, terdaftar, dicabut });
     // Tombol URL ditolak Telegram bila alamatnya bukan https publik — kirim ulang tanpa tombol.
     const id = await kirimKeDeveloper(pesan, [[{ text: '➕ Buka form registrasi', url: `${m.dashboard}/register?${q}` }]])
       ?? await kirimKeDeveloper(pesan);
     return id === null ? { ok: false, code: 'NOTIFY_FAILED' } : { ok: true };
+  },
+
+  /* ── Kode Aktivasi tersimpan (migrasi 004) ──────────────────────────── */
+
+  /** Simpan terenkripsi. false bila kolomnya belum ada (SQL 004 belum dijalankan) — registrasi tetap jalan. */
+  async simpanKode(licenseCode: string, kode: string): Promise<boolean> {
+    const { error } = await db().from('licenses').update({ activation_code_enc: kunciKode(kode) }).eq('license_code', licenseCode);
+    if (error) console.error('[kode] tidak tersimpan:', error.message);
+    return !error;
+  },
+
+  /** { kode } bila tersimpan; { belumSql } bila SQL 004 belum dijalankan. */
+  async ambilKode(licenseCode: string): Promise<{ kode: string | null; belumSql: boolean }> {
+    const { data, error } = await db().from('licenses').select('activation_code_enc').eq('license_code', licenseCode).maybeSingle();
+    if (error) return { kode: null, belumSql: /activation_code_enc/.test(error.message) };
+    return { kode: bukaKode((data as { activation_code_enc?: string } | null)?.activation_code_enc), belumSql: false };
+  },
+
+  /**
+   * Terbitkan ULANG Kode Aktivasi untuk lisensi yang BELUM dipakai platform mana
+   * pun (kode lama hilang/tidak tersimpan). Kunci lama tidak berlaku lagi.
+   * Lisensi yang sudah terikat ditolak — platformnya masih memakai kunci lama.
+   */
+  async buatUlangKode(licenseCode: string, pelaku: Pelaku): Promise<HasilAksi & { kode_aktivasi?: string }> {
+    const info = await this.get(licenseCode);
+    if (!info || info.license_code !== licenseCode) return { ok: false, code: 'LICENSE_NOT_FOUND' };
+    if (info.status === 'REVOKED' || info.status === 'REPLACED') return { ok: false, code: `LICENSE_${info.status}` };
+    if (info.instance_bound) return { ok: false, code: 'SUDAH_DIPAKAI_PLATFORM' };
+    const kunci = crypto.randomBytes(32).toString('base64url');
+    const { data, error } = await db().from('licenses').update({ key_hash: hashKunciDeployment(kunci) })
+      .eq('license_code', licenseCode).select('id');
+    if (error || !data?.length) return { ok: false, code: 'GAGAL' };
+    const kode = buatKodeAktivasi({ deploymentId: info.deployment_code, licenseId: licenseCode, deploymentKey: kunci });
+    await this.simpanKode(licenseCode, kode);
+    await rpc('la_audit', {
+      p_license: (data[0] as { id: string }).id, p_action: 'CODE_REISSUED', p_prev: null, p_new: null,
+      p_actor: pelaku.nama, p_via: pelaku.via, p_reason: 'Kode Aktivasi dibuat ulang; kode lama tidak berlaku',
+    });
+    return { ok: true, action: 'CODE_REISSUED', kode_aktivasi: kode };
+  },
+
+  /** Semua kode tersimpan untuk diekspor (lisensi yang masih bisa dipakai). */
+  async eksporKode(): Promise<{ baris: Record<string, string>[]; belumSql: boolean }> {
+    const { data, error } = await db().from('licenses')
+      .select('license_code, status, license_type, package, expires_at, activation_code_enc, deployments(deployment_code, company_name)')
+      .order('created_at', { ascending: false });
+    if (error) return { baris: [], belumSql: /activation_code_enc/.test(error.message) };
+    type Baris = { license_code: string; status: string; license_type: string; package: string; expires_at: string | null;
+      activation_code_enc: string | null; deployments: { deployment_code: string; company_name: string } | null };
+    return {
+      belumSql: false,
+      baris: ((data ?? []) as unknown as Baris[]).map((l) => ({
+        perusahaan: l.deployments?.company_name ?? '', deployment: l.deployments?.deployment_code ?? '',
+        lisensi: l.license_code, status: l.status, jenis: l.license_type, paket: l.package,
+        berakhir: l.expires_at ? l.expires_at.slice(0, 10) : '',
+        kode_aktivasi: bukaKode(l.activation_code_enc) ?? '(tidak tersimpan — buat ulang di halaman lisensi)',
+      })),
+    };
   },
 
   /* ── Registrasi (§41) ───────────────────────────────────────────────── */
@@ -262,11 +389,13 @@ export const LicenseService = {
       p_package: m.paket, p_features: fiturUntuk(m.paket, m.custom), p_duration_days: m.hari,
       p_activate: m.aktifkan, p_actor: pelaku.nama, p_via: pelaku.via, p_license_type: m.jenis ?? 'STANDARD',
     });
-    return {
-      ...h,
-      deployment_key: h.ok ? kunci : undefined,
-      kode_aktivasi: h.ok ? buatKodeAktivasi({ deploymentId: h.deployment_code, licenseId: h.license_code, deploymentKey: kunci }) : undefined,
-    };
+    if (!h.ok) return h;
+    const kode = buatKodeAktivasi({ deploymentId: h.deployment_code, licenseId: h.license_code, deploymentKey: kunci });
+    await this.simpanKode(h.license_code, kode);
+    await kirimKeDeveloper(
+      `🆕 <b>DEPLOYMENT TERDAFTAR</b>\n\n${m.company}\n<code>${h.license_code}</code>\nKode Aktivasi (cadangan):\n<code>${kode}</code>`,
+    ).catch(() => null);
+    return { ...h, deployment_key: kunci, kode_aktivasi: kode };
   },
 
   /* ── Baca ───────────────────────────────────────────────────────────── */
