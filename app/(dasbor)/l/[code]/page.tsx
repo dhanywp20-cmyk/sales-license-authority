@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { LABEL_PAKET, statusEfektif } from '@/lib/kontrak/kontrak.ts';
 import { PilihPaketFitur } from '@/app/PilihPaketFitur';
 import { PilihJenisDurasi } from '@/app/PilihJenisDurasi';
-import { DURASI_STANDAR, labelDurasi } from '@/lib/durasi';
+import { KodeTersimpan } from '@/app/KodeTersimpan';
+import { DURASI_STANDAR, DURASI_TRIAL, labelDurasi } from '@/lib/durasi';
 import { LABEL_AKSI, LABEL_JENIS_PERMINTAAN, LABEL_LEWAT, LABEL_STATUS, LABEL_STATUS_PERMINTAAN, label } from '@/lib/label';
 import { LicenseService } from '@/lib/license-service';
 import { aksiLisensi } from '@/app/actions';
@@ -28,8 +29,9 @@ function Tersembunyi({ lic, aksi }: { lic: string; aksi: string }) {
 export default async function DetailLisensi({ params, searchParams }: { params: { code: string }; searchParams: { pesan?: string } }) {
   const info = await LicenseService.get(decodeURIComponent(params.code));
   if (!info) notFound();
-  const [audit, permintaan] = await Promise.all([
+  const [audit, permintaan, simpanan] = await Promise.all([
     LicenseService.auditLog(info.license_code), LicenseService.requestsFor(info.license_code),
+    LicenseService.ambilKode(info.license_code),
   ]);
   const status = statusEfektif(info.status, info.expires_at, new Date(), info.warning_days);
   const lic = info.license_code;
@@ -63,9 +65,55 @@ export default async function DetailLisensi({ params, searchParams }: { params: 
           <div><dt>Tenggang</dt><dd>{info.grace_period_days} hari</dd></div>
           <div><dt>Pemeriksaan terakhir</dt><dd>{tgl(info.last_verified_at)}</dd></div>
           <div><dt>Versi aplikasi</dt><dd>{info.application_version ?? '—'}</dd></div>
-          <div><dt>Kode Aktivasi</dt><dd>{info.instance_bound ? 'Terikat ke 1 platform' : 'Belum dipakai'}</dd></div>
+          <div><dt>Platform</dt><dd>{info.instance_bound ? 'Terikat ke 1 platform' : 'Belum dipakai'}</dd></div>
         </dl>
       </section>
+
+      <section className="card">
+        <h2>Kode Aktivasi</h2>
+        {simpanan.belumSql ? (
+          <p className="notice">Penyimpanan kode belum aktif. Jalankan <code>supabase/migrations/004_simpan_kode_aktivasi.sql</code> di
+            SQL Editor Supabase Kantor Pusat, lalu terbitkan ulang kode di bawah.</p>
+        ) : simpanan.kode ? (
+          <>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {info.instance_bound ? 'Sudah dipakai 1 platform — kode ini tidak bisa dipakai di platform lain.' : 'Belum dipakai platform mana pun.'}
+            </p>
+            <KodeTersimpan kode={simpanan.kode} />
+          </>
+        ) : (
+          <p className="muted" style={{ marginTop: 0 }}>
+            Kode lisensi ini tidak tersimpan (dibuat sebelum fitur simpan kode). {info.instance_bound
+              ? 'Kode sedang dipakai platform, jadi tidak bisa dibuat ulang tanpa memutus platform itu. Bila perlu: Lepas ikatan platform → Buat ulang kode → tempel kode baru di platform.'
+              : 'Buat ulang kode di bawah — kode lama otomatis tidak berlaku.'}
+          </p>
+        )}
+        {!dicabut && !info.instance_bound && (
+          <form action={aksiLisensi} className="inline" style={{ marginTop: 10 }}>
+            <Tersembunyi lic={lic} aksi="code" />
+            <button title="Kode lama tidak berlaku lagi">🔄 Buat ulang kode</button>
+          </form>
+        )}
+      </section>
+
+      {info.status === 'PENDING' && (
+        <section className="card sorot">
+          <h2>Lisensi belum aktif</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Lisensi ini dibuat tanpa langsung aktif. Aktifkan sekarang — platform pelanggan ikut aktif pada
+            pemeriksaan berikutnya (≤ 5 menit, atau Admin pelanggan klik <i>Periksa sekarang</i>).
+          </p>
+          <form action={aksiLisensi} className="inline">
+            <Tersembunyi lic={lic} aksi="activate" />
+            <select name="hari" defaultValue={info.license_type === 'TRIAL' ? 14 : 365}>
+              {(info.license_type === 'TRIAL' ? DURASI_TRIAL : DURASI_STANDAR).map((d) => (
+                <option key={d.hari} value={d.hari}>{d.label}</option>
+              ))}
+            </select>
+            <button className="primary">✅ Aktifkan sekarang</button>
+          </form>
+        </section>
+      )}
 
       {!dicabut && (
         <section className="card">

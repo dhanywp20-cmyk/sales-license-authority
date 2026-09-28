@@ -37,7 +37,10 @@ export default async function DaftarLisensi({ searchParams }: { searchParams: { 
           <h1>Lisensi</h1>
           <p className="muted">{semua.filter((l) => l.status_efektif !== 'REPLACED').length} lisensi berlaku · {semua.length} total termasuk yang sudah diganti</p>
         </div>
-        <a className="tombol primary" href="/register">➕ Registrasi deployment</a>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a className="tombol" href="/ekspor-kode">⬇ Ekspor kode (CSV)</a>
+          <a className="tombol primary" href="/register">➕ Registrasi deployment</a>
+        </div>
       </div>
 
       <section className="card">

@@ -37,6 +37,7 @@ const POLA_CALLBACK: [RegExp, string][] = [
   [new RegExp(`^rk:(${LIC}):([0-9a-f]{6})$`), 'rk'],
   [new RegExp(`^pk:(${LIC}):(STARTER|PROFESSIONAL|BUSINESS|ENTERPRISE):([0-9a-f]{6})$`), 'pk'],
   [new RegExp(`^tf:(${LIC}):([0-9a-f]{6})$`), 'tf'],
+  [new RegExp(`^ak:(${LIC}):([0-9a-f]{6})$`), 'ak'],
 ];
 
 interface TgPengguna { id: number }
@@ -121,6 +122,13 @@ async function tanganiCallback(cb: NonNullable<TgUpdate['callback_query']>) {
     case 're': h = await LicenseService.reactivate(m[1], pelaku, kunci); break;
     case 'rk': h = await LicenseService.revoke(m[1], pelaku, kunci, 'Dicabut lewat Telegram'); break;
     case 'pk': h = await LicenseService.setPackage(m[1], m[2] as Paket, pelaku, kunci); break;
+    case 'ak': {
+      const info = await LicenseService.get(m[1]);
+      h = info && info.license_code === m[1]
+        ? await LicenseService.activate(m[1], info.license_type === 'TRIAL' ? 14 : 365, pelaku)
+        : { ok: false, code: 'LICENSE_NOT_FOUND' };
+      break;
+    }
     case 'tf': {
       // Trial → penuh: lisensi baru berjenis STANDAR, paket & fitur sama, 1 tahun.
       const info = await LicenseService.get(m[1]);

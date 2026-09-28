@@ -143,6 +143,12 @@ export function papanLisensi(info: InfoLisensi): Papan {
   // Lisensi yang sudah DIGANTI / dicabut bersifat final — tidak ada tombol.
   if (info.status === 'REPLACED' || info.status === 'REVOKED') return [];
   const n = nonce();
+  if (info.status === 'PENDING') {
+    return [
+      [{ text: info.license_type === 'TRIAL' ? '✅ AKTIFKAN (trial 14 hari)' : '✅ AKTIFKAN (1 tahun)', callback_data: `ak:${lic}:${n}` }],
+      [{ text: '⛔ REVOKE', callback_data: `rv:${lic}` }],
+    ];
+  }
   const baris: Papan = [[
     { text: '+1 Bulan', callback_data: `ex:${lic}:30:${n}` },
     { text: '+3 Bulan', callback_data: `ex:${lic}:90:${n}` },
@@ -190,7 +196,7 @@ export function teksLisensi(info: InfoLisensi): string {
 /** Pengajuan dari platform yang BELUM punya lisensi — hanya pemberitahuan, kode tetap dibuat manual. */
 export function teksPengajuanBaru(r: {
   company: string; contact: string; requested_by: string | null; package: Paket; trial: boolean;
-  days: number | null; notes: string | null; instance: string; terdaftar: string | null;
+  days: number | null; notes: string | null; instance: string; terdaftar: string | null; dicabut?: boolean;
 }): string {
   const durasi = r.trial ? 'Trial (hari ditentukan developer)'
     : labelDurasi(r.days);
@@ -207,7 +213,8 @@ export function teksPengajuanBaru(r: {
     r.notes ? `\nCatatan:\n${esc(r.notes)}` : '',
     '',
     `Platform: <code>${esc(r.instance.slice(0, 12))}</code>`,
-    r.terdaftar ? `⚠ Platform ini SUDAH terdaftar: ${esc(r.terdaftar)} — kode baru akan ditolak (trial tidak bisa diulang).` : '',
+    r.terdaftar && r.dicabut ? `ℹ Platform ini sebelumnya terdaftar sebagai ${esc(r.terdaftar)} dan lisensinya sudah DICABUT — kode baru bisa dipakai.` : '',
+    r.terdaftar && !r.dicabut ? `⚠ Platform ini SUDAH terdaftar: ${esc(r.terdaftar)} — kode baru akan ditolak (trial tidak bisa diulang). Kelola dari lisensi yang ada.` : '',
     '',
     'Kode Aktivasi TIDAK dikirim otomatis. Bila disetujui, registrasi di dashboard lalu kirim kodenya ke pelanggan secara manual.',
   ].join('\n');

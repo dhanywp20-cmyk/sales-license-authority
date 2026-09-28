@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 const KELOMPOK: { judul: string; menu: { href: string; label: string; ikon: string }[] }[] = [
   {
@@ -35,6 +36,10 @@ function aktif(pathname: string, href: string): boolean {
 
 export function Sidebar({ menunggu, keluar }: { menunggu: number; keluar: React.ReactNode }) {
   const pathname = usePathname();
+  // Menu yang diklik langsung tersorot, sebelum halamannya selesai dimuat.
+  const [tujuan, setTujuan] = useState<string | null>(null);
+  useEffect(() => { setTujuan(null); }, [pathname]);
+  const sorot = (href: string) => (tujuan ? tujuan === href : aktif(pathname, href));
   return (
     <aside className="sisi">
       <nav>
@@ -42,8 +47,9 @@ export function Sidebar({ menunggu, keluar }: { menunggu: number; keluar: React.
           <div key={k.judul} className="kelompok" role="group" aria-label={k.judul}>
             <p className="judul-kelompok">{k.judul}</p>
             {k.menu.map((m) => (
-              <Link key={m.href} href={m.href} className={`menu${aktif(pathname, m.href) ? ' aktif' : ''}`}
-                aria-current={aktif(pathname, m.href) ? 'page' : undefined}>
+              <Link key={m.href} href={m.href} className={`menu${sorot(m.href) ? ' aktif' : ''}`}
+                aria-current={aktif(pathname, m.href) ? 'page' : undefined}
+                onClick={() => { if (!aktif(pathname, m.href)) setTujuan(m.href); }}>
                 <span aria-hidden="true">{m.ikon}</span>
                 {m.label}
                 {m.href === '/permintaan' && menunggu > 0 && <span className="hitung">{menunggu}</span>}

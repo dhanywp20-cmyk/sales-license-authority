@@ -48,6 +48,18 @@ export async function sesiSah(token: string | undefined): Promise<boolean> {
   return samaPanjangTetap(tanda, await hmacHex(`la-sesi:${sampai}`, r));
 }
 
+/** Username login dashboard: env CENTRAL_ADMIN_USERNAME, bawaan `developer`. */
+export function usernameAdmin(): string {
+  return (process.env.CENTRAL_ADMIN_USERNAME ?? '').trim().toLowerCase() || 'developer';
+}
+
+export async function usernameBenar(username: string): Promise<boolean> {
+  const [a, b] = await Promise.all([
+    hmacHex(`la-user:${username.trim().toLowerCase()}`, 'banding'), hmacHex(`la-user:${usernameAdmin()}`, 'banding'),
+  ]);
+  return samaPanjangTetap(a, b);
+}
+
 /** Sandi yang diketik dibandingkan lewat hash, supaya panjangnya pun tidak bocor lewat waktu. */
 export async function sandiBenar(sandi: string): Promise<boolean> {
   const r = rahasia();

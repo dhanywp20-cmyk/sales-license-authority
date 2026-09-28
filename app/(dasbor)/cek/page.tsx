@@ -67,6 +67,8 @@ async function periksa(): Promise<Hasil[]> {
         h.push({ nama: 'SQL 002 (Kode Aktivasi)', ok: !e3, pesan: e3 ? 'Belum dijalankan. Jalankan supabase/migrations/002_kode_aktivasi.sql di SQL Editor.' : 'Terpasang.' });
         const { error: e4 } = await db.from('licenses').select('replaced_by, handover_code', { head: true });
         h.push({ nama: 'SQL 003 (Trial & ganti lisensi)', ok: !e4, pesan: e4 ? 'Belum dijalankan. Jalankan supabase/migrations/003_trial_dan_ganti_lisensi.sql di SQL Editor.' : 'Terpasang.' });
+        const { error: e5 } = await db.from('licenses').select('activation_code_enc', { head: true });
+        h.push({ nama: 'SQL 004 (simpan Kode Aktivasi)', ok: !e5, pesan: e5 ? 'Belum dijalankan. Jalankan supabase/migrations/004_simpan_kode_aktivasi.sql di SQL Editor.' : 'Terpasang.' });
       } else if (/relation .* does not exist|Could not find the table/i.test(error.message)) {
         h.push({ nama: 'Database pusat', ok: false, pesan: 'Terhubung, tetapi TABEL BELUM ADA. Jalankan supabase/migrations/001_license_authority.sql di SQL Editor Supabase.' });
       } else if (/JWT|Invalid API key|apikey|401|permission/i.test(error.message)) {

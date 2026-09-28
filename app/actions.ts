@@ -50,6 +50,13 @@ export async function aksiLisensi(f: FormData) {
     case 'extend': h = await LicenseService.extend(lic, Number(teks(f, 'hari')), PELAKU, k, alasan); break;
     case 'suspend': h = await LicenseService.suspend(lic, PELAKU, k, alasan); break;
     case 'reactivate': h = await LicenseService.reactivate(lic, PELAKU, k); break;
+    case 'code': {
+      const r = await LicenseService.buatUlangKode(lic, PELAKU);
+      kembali(lic, r.ok ? 'Kode Aktivasi baru dibuat — lihat bagian Kode Aktivasi. Kode lama tidak berlaku.'
+        : r.code === 'SUDAH_DIPAKAI_PLATFORM' ? 'Kode sedang dipakai platform. Lepas ikatan platform dulu.' : `Gagal: ${r.code}`);
+      break;
+    }
+    case 'activate': h = await LicenseService.activate(lic, Number(teks(f, 'hari')), PELAKU); break;
     case 'unbind': h = await LicenseService.resetInstance(lic, PELAKU); break;
     case 'revoke':
       if (teks(f, 'konfirmasi') !== lic) kembali(lic, 'Ketik kode lisensi untuk mengonfirmasi pencabutan.');
@@ -102,7 +109,8 @@ export async function aksiRegistrasi(_: HasilRegistrasi, f: FormData): Promise<H
   try {
     h = await LicenseService.register({
       company: perusahaan, environment: lingkungan as 'production', paket: paket as Paket, hari,
-      aktifkan: f.get('aktifkan') === 'on', custom, jenis,
+      // Menerbitkan Kode Aktivasi = persetujuan developer; tidak ada langkah persetujuan kedua.
+      aktifkan: true, custom, jenis,
     }, PELAKU);
   } catch (e) {
     console.error('[registrasi] gagal:', e instanceof Error ? e.message : 'unknown');

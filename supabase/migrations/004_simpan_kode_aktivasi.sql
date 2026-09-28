@@ -1,0 +1,11 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- 004 — Kode Aktivasi bisa dilihat lagi & diekspor oleh developer
+--
+-- Kode disimpan TERENKRIPSI (AES-256-GCM). Kuncinya diturunkan dari
+-- LICENSE_PRIVATE_KEY di Vercel Kantor Pusat — bocornya isi database saja
+-- tidak membuka kode. Tabel licenses tetap tertutup untuk anon/authenticated
+-- (migrasi 001); hanya server Kantor Pusat (service role) yang membacanya.
+-- Kode yang dibuat SEBELUM migrasi ini tidak pernah tersimpan: pakai tombol
+-- "Buat ulang kode" di halaman lisensi.
+-- ════════════════════════════════════════════════════════════════════════════
+ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS activation_code_enc text;
