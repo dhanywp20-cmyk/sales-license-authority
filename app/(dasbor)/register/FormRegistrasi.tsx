@@ -1,20 +1,20 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { kirim } from '@/app/kirim-form';
 import type { Paket } from '@/lib/kontrak/kontrak.ts';
 import { PilihPaketFitur } from '@/app/PilihPaketFitur';
 import { PilihJenisDurasi } from '@/app/PilihJenisDurasi';
 import { aksiRegistrasi, type HasilRegistrasi } from '@/app/actions';
 
-function Kirim() {
-  const { pending } = useFormStatus();
+function Kirim({ pending }: { pending: boolean }) {
   return <button className="primary" disabled={pending}>{pending ? 'Memproses…' : 'Registrasi'}</button>;
 }
 
 export function FormRegistrasi({ awal }: {
   awal?: { company: string; paket?: Paket; jenis: 'STANDARD' | 'TRIAL'; hari: number };
 }) {
-  const [hasil, aksi] = useFormState<HasilRegistrasi, FormData>(aksiRegistrasi, {});
+  const [hasil, aksi, pending] = useActionState<HasilRegistrasi, FormData>(aksiRegistrasi, {});
 
   if (hasil.deployment_key) {
     return (
@@ -43,7 +43,7 @@ export function FormRegistrasi({ awal }: {
   }
 
   return (
-    <form action={aksi} className="card" data-tanpa-progres>
+    <form onSubmit={kirim(aksi)} className="card" data-tanpa-progres>
       {hasil.galat && <div className="notice">{hasil.galat}</div>}
       <div className="grid">
         <label>Nama perusahaan<br /><input name="company" required minLength={2} maxLength={160} placeholder="PT ABC" defaultValue={awal?.company} /></label>
@@ -58,7 +58,7 @@ export function FormRegistrasi({ awal }: {
       </div>
       <PilihPaketFitur awalPaket={awal?.paket} />
       <p className="muted">Lisensi langsung <b>aktif</b> sejak kode ditempel pelanggan — menerbitkan kode berarti Anda sudah menyetujuinya.</p>
-      <Kirim />
+      <Kirim pending={pending} />
     </form>
   );
 }

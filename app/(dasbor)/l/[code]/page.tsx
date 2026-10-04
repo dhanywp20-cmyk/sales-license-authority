@@ -26,7 +26,8 @@ function Tersembunyi({ lic, aksi }: { lic: string; aksi: string }) {
   );
 }
 
-export default async function DetailLisensi({ params, searchParams }: { params: { code: string }; searchParams: { pesan?: string } }) {
+export default async function DetailLisensi(props: { params: Promise<{ code: string }>; searchParams: Promise<{ pesan?: string }> }) {
+  const [params, searchParams] = await Promise.all([props.params, props.searchParams]);
   const info = await LicenseService.get(decodeURIComponent(params.code));
   if (!info) notFound();
   const [audit, permintaan, simpanan] = await Promise.all([

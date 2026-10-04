@@ -3,9 +3,10 @@ import { FormRegistrasi } from './FormRegistrasi';
 
 export const dynamic = 'force-dynamic';
 
-export default function HalamanRegistrasi({ searchParams }: {
-  searchParams: { company?: string; paket?: string; jenis?: string; hari?: string };
+export default async function HalamanRegistrasi(props: {
+  searchParams: Promise<{ company?: string; paket?: string; jenis?: string; hari?: string }>;
 }) {
+  const searchParams = await props.searchParams;
   // Isian awal dari tombol "Buka form registrasi" pada pengajuan Telegram.
   const hari = Number(searchParams.hari);
   const awal = {

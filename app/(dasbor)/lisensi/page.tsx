@@ -20,7 +20,8 @@ function sisa(iso: string | null) {
   return h > 0 ? `${h}` : '0';
 }
 
-export default async function DaftarLisensi({ searchParams }: { searchParams: { status?: string; q?: string } }) {
+export default async function DaftarLisensi(props: { searchParams: Promise<{ status?: string; q?: string }> }) {
+  const searchParams = await props.searchParams;
   const semua = await LicenseService.list();
   const status = SARING.includes(searchParams.status as typeof SARING[number]) ? searchParams.status : '';
   const q = (searchParams.q ?? '').trim().toLowerCase();
@@ -38,7 +39,7 @@ export default async function DaftarLisensi({ searchParams }: { searchParams: { 
           <p className="muted">{semua.filter((l) => l.status_efektif !== 'REPLACED').length} lisensi berlaku · {semua.length} total termasuk yang sudah diganti</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a className="tombol" href="/ekspor-kode">⬇ Ekspor kode (CSV)</a>
+          <a className="tombol" href="/ekspor-kode">⬇ Ekspor kode (Excel)</a>
           <a className="tombol primary" href="/register">➕ Registrasi deployment</a>
         </div>
       </div>

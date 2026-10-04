@@ -452,6 +452,15 @@ export const LicenseService = {
   },
 
   /** Aktivitas terbaru di semua lisensi (Ringkasan). */
+  /** Login Developer yang berhasil (dicatat app/masuk/aksi.ts). */
+  async loginTerakhir(batas = 5): Promise<{ waktu: string; ip: string; ua: string }[]> {
+    const { data } = await db().from('processed_actions').select('action_key, result, created_at')
+      .like('action_key', 'login-ok:%').order('created_at', { ascending: false }).limit(batas);
+    return (data ?? []).map((r: { created_at: string; result: { ip?: string; ua?: string } | null }) => ({
+      waktu: r.created_at, ip: r.result?.ip ?? '—', ua: r.result?.ua ?? '',
+    }));
+  },
+
   async auditTerbaru(batas = 12): Promise<BarisAuditTerbaru[]> {
     const { data } = await db().from('license_audit_logs')
       .select('id, action, previous_state, new_state, performed_by, performed_via, reason, created_at, licenses(license_code), deployments(company_name)')

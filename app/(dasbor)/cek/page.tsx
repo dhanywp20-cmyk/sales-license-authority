@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { rahasiaTotp, cocokKode } from '@/lib/totp';
 import { periksaToken, tandatangani } from '@/lib/kontrak/tanda-tangan.ts';
 import { fiturDariPaket } from '@/lib/kontrak/kontrak.ts';
 
@@ -31,6 +32,13 @@ async function periksa(): Promise<Hasil[]> {
       : 'Format tidak dikenal. Salin ulang dari Supabase → Project Settings → API Keys.' });
   for (const k of ['LICENSE_PRIVATE_KEY', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_DEVELOPER_ID', 'TELEGRAM_WEBHOOK_SECRET', 'CENTRAL_ADMIN_SECRET', 'CRON_SECRET']) {
     h.push({ nama: k, ok: Boolean(env(k)), pesan: env(k) ? 'Terisi.' : 'Belum diisi (atau belum Redeploy setelah diisi).' });
+  }
+  {
+    let ok = false, pesan = 'Belum diisi — login hanya dengan sandi. Jalankan `npm run totp`, isi di Vercel, lalu Redeploy.';
+    try {
+      if (rahasiaTotp()) { cocokKode(rahasiaTotp()!, '000000'); ok = true; pesan = 'Aktif — login meminta kode authenticator.'; }
+    } catch { pesan = 'Nilainya bukan base32 yang sah. Buat ulang dengan `npm run totp`.'; }
+    h.push({ nama: 'CENTRAL_ADMIN_TOTP_SECRET (2FA)', ok, pesan });
   }
   if (env('TELEGRAM_DEVELOPER_ID')) {
     const ok = env('TELEGRAM_DEVELOPER_ID').split(',').every((s) => /^\d+$/.test(s.trim()));
@@ -122,6 +130,15 @@ export default async function HalamanCek() {
             ))}
           </tbody>
         </table>
+      </section>
+      <section className="card">
+        <h2>Cadangan data</h2>
+        <p className="muted">
+          Deployment, lisensi, permintaan, dan audit dalam satu berkas terenkripsi (hanya bisa dibuka dengan
+          LICENSE_PRIVATE_KEY). Otomatis dikirim ke Telegram Developer setiap Senin. Pulihkan dengan
+          <code> node scripts/pulihkan-cadangan.mjs &lt;berkas&gt;</code>.
+        </p>
+        <a className="tombol" href="/cadangan">⬇ Unduh cadangan sekarang</a>
       </section>
     </>
   );
