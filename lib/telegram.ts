@@ -113,6 +113,27 @@ export async function kirimKeDeveloper(teks: string, papan?: Papan): Promise<num
   return pertama;
 }
 
+/** Kirim berkas (mis. cadangan terenkripsi) ke setiap developer. */
+export async function kirimBerkasKeDeveloper(nama: string, isi: Buffer, keterangan: string): Promise<boolean> {
+  if (!telegramAktif()) return false;
+  let ok = true;
+  for (const chat of idDeveloper()) {
+    try {
+      const f = new FormData();
+      f.append('chat_id', String(chat));
+      f.append('caption', keterangan.slice(0, 1000));
+      f.append('parse_mode', 'HTML');
+      f.append('document', new Blob([new Uint8Array(isi)]), nama);
+      const res = await fetch(`${API}/bot${token()}/sendDocument`, { method: 'POST', body: f, signal: AbortSignal.timeout(20_000) });
+      const data = await res.json().catch(() => null) as { ok?: boolean } | null;
+      if (!data?.ok) { ok = false; console.error(`[telegram] sendDocument gagal (${res.status})`); }
+    } catch {
+      ok = false; console.error('[telegram] sendDocument tidak terjangkau');
+    }
+  }
+  return ok;
+}
+
 export async function balas(chatId: number, teks: string, papan?: Papan) {
   await panggil('sendMessage', {
     chat_id: chatId, text: teks, parse_mode: 'HTML', disable_web_page_preview: true,

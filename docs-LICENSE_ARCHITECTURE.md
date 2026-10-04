@@ -34,7 +34,7 @@ aplikasi pelanggan.
 | API deployment | `POST /api/v1/verify`, `POST /api/v1/requests`, `POST /api/v1/requests/cancel` |
 | Webhook Telegram | `POST /api/telegram/webhook` |
 | Peringatan kedaluwarsa | `GET /api/cron` (Vercel Cron harian) |
-| Dashboard developer | `/`, `/l/<LIC>`, `/register` (Basic Auth) |
+| Dashboard developer | `/`, `/lisensi`, `/permintaan`, `/l/<LIC>`, `/register`, `/cek` (login di `/masuk`) |
 
 Isi database pusat: `deployments`, `licenses`, `license_features`, `license_requests`, `license_audit_logs`,
 `processed_actions`. Database pusat **tidak** menyimpan data bisnis pelanggan, sandi pengguna, maupun foto.

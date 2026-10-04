@@ -1,5 +1,6 @@
 import { LABEL_PAKET } from '@/lib/kontrak/kontrak.ts';
 import { LicenseService } from '@/lib/license-service';
+import { rahasiaTotp } from '@/lib/totp';
 import { TabelPermintaan } from './TabelPermintaan';
 import { LABEL_AKSI, LABEL_LEWAT, label } from '@/lib/label';
 
@@ -11,14 +12,21 @@ function tgl(iso: string | null) {
 function waktu(iso: string) {
   return new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
+function perangkat(ua: string): string {
+  const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows'
+    : /Mac OS X/i.test(ua) ? 'macOS' : /Linux/i.test(ua) ? 'Linux' : 'Perangkat lain';
+  const b = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  return `${b} · ${os}`;
+}
 function sisaHari(iso: string | null): number | null {
   return iso ? Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000) : null;
 }
 
 
 export default async function Ringkasan() {
-  const [semua, menunggu, aktivitas] = await Promise.all([
+  const [semua, menunggu, aktivitas, login] = await Promise.all([
     LicenseService.list(), LicenseService.pendingRequests(), LicenseService.auditTerbaru(),
+    LicenseService.loginTerakhir().catch(() => []),
   ]);
   const berlaku = semua.filter((l) => l.status_efektif !== 'REPLACED');
   const hitung = (s: string) => berlaku.filter((l) => l.status_efektif === s).length;
@@ -95,6 +103,23 @@ export default async function Ringkasan() {
                 <span key={l.license_code}>{i > 0 && ', '}<a href={`/l/${l.license_code}`}>{l.company_name}</a></span>
               ))}
             </p>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>Login Developer terakhir</h2>
+          {!rahasiaTotp() && (
+            <p className="notice">2FA belum aktif. Jalankan <code>npm run totp</code>, isi <code>CENTRAL_ADMIN_TOTP_SECRET</code> di Vercel, lalu Redeploy.</p>
+          )}
+          {login.length === 0 ? <p className="kosong">Belum ada catatan login.</p> : (
+            <ul className="linimasa">
+              {login.map((l) => (
+                <li key={l.waktu}>
+                  <span className="waktu">{waktu(l.waktu)}</span>
+                  <span><b>{l.ip}</b> <span className="muted">— {perangkat(l.ua)}</span></span>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
 

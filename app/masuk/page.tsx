@@ -1,9 +1,11 @@
+import { rahasiaTotp } from '@/lib/totp';
 import { FormMasuk } from './FormMasuk';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Masuk — Kantor Pusat Lisensi' };
 
-export default function HalamanMasuk({ searchParams }: { searchParams: { ke?: string } }) {
+export default async function HalamanMasuk(props: { searchParams: Promise<{ ke?: string }> }) {
+  const searchParams = await props.searchParams;
   return (
     <main className="masuk-dua">
       {/* KIRI: panel identitas (desktop) — sama dengan halaman masuk aplikasi Sales. */}
@@ -40,7 +42,7 @@ export default function HalamanMasuk({ searchParams }: { searchParams: { ke?: st
           </div>
           <h2>Selamat Datang</h2>
           <p className="muted">Masuk ke dashboard Kantor Pusat untuk melanjutkan</p>
-          <FormMasuk ke={searchParams.ke ?? '/'} />
+          <FormMasuk ke={searchParams.ke ?? '/'} pakai2fa={rahasiaTotp() !== null} />
         </div>
       </section>
     </main>

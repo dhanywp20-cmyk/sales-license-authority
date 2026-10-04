@@ -55,11 +55,36 @@ https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<alamat-vercel-baru>/
 ```
 Lalu kirim `/help` ke bot → harus membalas.
 
-## 5. Daftarkan pelanggan & sambungkan aplikasi Sales
-1. Dashboard Kantor Pusat baru → **Registrasi deployment** → catat 5 baris `LICENSE_...`.
-2. Di Vercel **pelanggan** (proyek aplikasi Sales) → Environment Variables → isi/ganti:
-   `LICENSE_AUTHORITY_URL`, `LICENSE_DEPLOYMENT_ID`, `LICENSE_ID`, `LICENSE_DEPLOYMENT_KEY`, `LICENSE_PUBLIC_KEY`.
-3. Redeploy aplikasi Sales → Admin → Lisensi → **Periksa sekarang**.
+## 5. Pembaruan database (sekali)
+Supabase developer → **SQL Editor** → jalankan berurutan, masing-masing sampai "Success":
+1. `supabase/migrations/002_kode_aktivasi.sql`
+2. `supabase/migrations/003_trial_dan_ganti_lisensi.sql`
+3. `supabase/migrations/004_simpan_kode_aktivasi.sql`
+
+Cek: buka `https://<kantor-pusat>/cek` → baris "SQL 002", "SQL 003", dan "SQL 004" harus hijau.
+
+## 6. Daftarkan pelanggan — cukup satu Kode Aktivasi
+1. Dashboard Kantor Pusat → **Registrasi deployment** → pilih paket → **Registrasi**.
+2. Salin **Kode Aktivasi** (diawali `SMPA1-`) dan berikan ke Admin pelanggan.
+3. Admin pelanggan: aplikasi Sales → **Admin Panel → Lisensi** → tempel kode → **Aktifkan**.
+   Tidak perlu mengisi Environment Variables lisensi di Vercel pelanggan.
+4. Kode terikat ke platform pertama yang memakainya. Pelanggan pindah server?
+   Dashboard → buka lisensinya → **Lepas ikatan platform** (atau Telegram `/unbind KODE`).
+
+## 7. Lisensi TRIAL (jumlah hari bebas)
+- Registrasi → **Jenis lisensi: Trial** → isi **Durasi** berapa hari saja (mis. 7, 14, 30) → centang
+  Registrasi (lisensi langsung aktif) → berikan Kode Aktivasi ke pelanggan.
+- Satu platform hanya boleh punya satu pendaftaran: pelanggan yang sama **tidak bisa** memakai
+  kode trial baru untuk mengulang trial (ditolak "Platform ini sudah terdaftar dengan lisensi lain").
+
+## 8. Upgrade / ganti paket / trial → penuh = LISENSI BARU
+- Dashboard → buka lisensi → **Paket & fitur** → pilih paket (dan jenis/durasi bila perlu) →
+  **Terbitkan lisensi baru**. Atau Telegram: tombol paket / **⭐ Trial → Penuh**.
+- Pusat menerbitkan lisensi **baru** (kode baru). Lisensi lama menjadi **DIGANTI** dan tidak bisa
+  dipakai lagi di mana pun.
+- Platform pelanggan **beralih otomatis** pada pemeriksaan berikutnya (≤ 24 jam, atau Admin pelanggan
+  klik *Periksa sekarang*). Kode Aktivasi baru juga dikirim ke Telegram developer sebagai cadangan.
+- Perpanjang masa berlaku (+30/+90/+1 tahun) TIDAK menerbitkan lisensi baru.
 
 ## Catatan pemeliharaan
 - `lib/kontrak/kontrak.ts` dan `lib/kontrak/tanda-tangan.ts` adalah salinan **identik** dari
@@ -67,3 +92,101 @@ Lalu kirim `/help` ke bot → harus membalas.
 - Jangan pernah menaruh `LICENSE_PRIVATE_KEY`, `TELEGRAM_BOT_TOKEN`, atau `CENTRAL_ADMIN_SECRET`
   di repo, di chat, atau di akun pelanggan.
 - Uji database: `supabase/tests/authority.sql` (22 uji, diakhiri ROLLBACK).
+
+## 9. Pengajuan dari platform yang belum punya kode
+- Admin pelanggan: Admin Panel → Lisensi → **Belum punya Kode Aktivasi? Ajukan lisensi** → isi → Kirim.
+- Pengajuan hanya muncul di **Telegram developer** ("📝 PENGAJUAN LISENSI BARU"). Tidak ada kode yang
+  dikirim otomatis.
+- Bila disetujui: tekan **➕ Buka form registrasi** (isian sudah terisi) → Registrasi → kirim Kode
+  Aktivasi ke kontak pelanggan secara manual.
+- Dibatasi 1 pengajuan per platform per 15 menit, 20 per jam total. Tidak perlu SQL baru.
+
+## 10. Tampilan baru dashboard (login, sidebar, Keluar)
+
+⚠ **Cara unggah versi ini (penting):** halaman lama dipindah ke folder `app/(dasbor)/`. Di repo GitHub
+Kantor Pusat, **hapus dulu** berkas/folder lama berikut, baru unggah isi ZIP (`app`, `lib`, `middleware.ts`,
+`PANDUAN-PINDAH-AKUN.md`). Kalau tidak dihapus, build Vercel gagal ("two parallel pages resolve to /"):
+`app/page.tsx`, `app/register/`, `app/cek/`, `app/l/`.
+Cara paling aman: hapus seluruh folder `app` di GitHub, lalu unggah folder `app` baru dari ZIP.
+
+- Buka alamat Kantor Pusat → halaman **Masuk** → isi kata sandi = nilai `CENTRAL_ADMIN_SECRET`
+  (tidak ada lagi kotak sandi bawaan browser). Sesi berlaku 12 jam.
+- Tombol **Keluar** ada di kiri bawah (di ponsel: kanan atas).
+- Menu: **Ringkasan** (angka & yang perlu tindakan), **Lisensi**, **Permintaan**, **Registrasi**, **Pemeriksaan**.
+- Durasi memakai pilihan yang sama dengan aplikasi Sales: 1 / 3 / 6 Bulan, 1 / 2 Tahun.
+  Trial: 7 / 14 / 30 hari, atau **Lainnya** untuk jumlah hari bebas.
+- Keamanan: 10 kali salah sandi dalam 15 menit → login dikunci 15 menit. Mengganti
+  `CENTRAL_ADMIN_SECRET` di Vercel otomatis mengeluarkan semua sesi.
+- Tidak perlu SQL baru.
+
+## 11. Tidak ada persetujuan kedua
+- Registrasi di Kantor Pusat kini **selalu langsung aktif**: menerbitkan Kode Aktivasi = persetujuan Anda.
+  Pelanggan menempel kode → modul langsung terbuka, tanpa mengajukan permintaan lagi.
+- Lisensi lama yang terlanjur **Menunggu aktivasi**: buka lisensinya → **✅ Aktifkan sekarang** (atau
+  Telegram `/info KODE` → tombol **✅ AKTIFKAN**). Platform pelanggan ikut aktif ≤ 5 menit.
+
+## 12. Lisensi dicabut → lisensi baru
+- Lisensi yang **dicabut** bersifat final (tidak bisa diperpanjang). Admin pelanggan otomatis melihat form
+  **Ajukan lisensi baru** (Trial/Berlangganan) → masuk Telegram Anda → Registrasi → kirim kode baru.
+- Kode baru boleh dipakai di platform yang sama: ikatan platform lama dilepas otomatis **hanya bila**
+  lisensi lamanya dicabut. Lisensi yang masih aktif/berakhir tetap mengunci platform (trial tidak bisa diulang).
+
+## 13. Kode Aktivasi bisa dilihat lagi & diekspor
+- Jalankan **sekali** `supabase/migrations/004_simpan_kode_aktivasi.sql` di SQL Editor Supabase Kantor Pusat.
+- Setiap kode baru (registrasi / ganti paket / buat ulang) disimpan **terenkripsi** dan bisa dilihat lagi:
+  buka lisensinya → bagian **Kode Aktivasi** → **Tampilkan** / **Salin kode**. Salinan juga dikirim ke Telegram.
+- **Ekspor semua kode**: menu Lisensi → **⬇ Ekspor kode (CSV)** (buka dengan Excel). Simpan di tempat aman.
+- Kode yang dibuat **sebelum** SQL 004 tidak pernah tersimpan. Bila belum dipakai platform: **🔄 Buat ulang kode**
+  (kode lama tidak berlaku). Bila sudah dipakai: **Lepas ikatan platform** → **Buat ulang kode** → tempel kode baru di platform.
+- Kunci enkripsinya diturunkan dari `LICENSE_PRIVATE_KEY` — jangan ganti variabel itu, atau kode tersimpan tidak bisa dibuka.
+
+## 14. Login dengan username + animasi pindah halaman
+- Halaman Masuk kini dua kolom (seperti aplikasi Sales) dengan **Username** + **Kata sandi**.
+- Username = env `CENTRAL_ADMIN_USERNAME` di Vercel Kantor Pusat (tidak peka huruf besar/kecil).
+  Bila tidak diisi, username bawaan: **`developer`**. Kata sandi tetap `CENTRAL_ADMIN_SECRET`.
+  Setelah menambah/mengubah env di Vercel → Deployments → **Redeploy**.
+- Pindah menu kini menampilkan bilah progres di atas, kerangka halaman (skeleton) saat memuat,
+  dan animasi masuk halaman.
+
+## 15. Next.js 15.5 (keamanan) — tidak perlu langkah tambahan
+
+Kode sudah memakai Next.js 15.5 + React 19 (`npm audit`: 0 celah). Cukup push
+seperti biasa; Vercel memasang ulang dependensi sendiri. Isian form login &
+registrasi kini tidak hilang lagi saat ada kesalahan.
+
+## 16. Verifikasi dua langkah (2FA) untuk login Developer — sangat dianjurkan
+
+1. Di laptop, dalam folder repo ini: `npm install` lalu `npm run totp`.
+2. Pindai QR yang tampil dengan Google Authenticator / Authy.
+3. Vercel → Settings → Environment Variables → tambah
+   `CENTRAL_ADMIN_TOTP_SECRET` = nilai yang dicetak → **Redeploy**.
+4. Login berikutnya meminta **Kode authenticator** 6 digit (kode yang sama
+   tidak bisa dipakai dua kali). `/cek` menampilkan baris 2FA hijau.
+
+Setiap login berhasil dicatat (IP + perangkat) di **Ringkasan → Login Developer
+terakhir** dan dikirim ke Telegram Anda. Ada login yang bukan Anda? Ganti
+`CENTRAL_ADMIN_SECRET` di Vercel lalu Redeploy — semua sesi langsung keluar.
+
+Kehilangan HP: hapus `CENTRAL_ADMIN_TOTP_SECRET` di Vercel → Redeploy (login
+kembali sandi saja), lalu ulangi langkah 1–3.
+
+## 17. Cadangan data otomatis
+
+- **Setiap Senin** Kantor Pusat mengirim berkas `cadangan-kantor-pusat-*.smpbak`
+  ke Telegram Developer (deployment, lisensi, fitur, permintaan, audit).
+- Kapan saja: **Pemeriksaan (`/cek`) → Unduh cadangan sekarang**.
+- Berkasnya terenkripsi dengan `LICENSE_PRIVATE_KEY` — tanpa kunci itu tidak
+  bisa dibuka. Simpan `LICENSE_PRIVATE_KEY` di tempat aman terpisah.
+- Memulihkan (mis. ke project Supabase baru setelah SQL 001–004):
+  ```
+  LICENSE_PRIVATE_KEY="<sama dengan di Vercel>" node scripts/pulihkan-cadangan.mjs cadangan-kantor-pusat-2026-10-05.smpbak
+  ```
+  lalu jalankan berkas `.sql` hasilnya di SQL Editor (aman diulang).
+- Uji kirim sekarang (opsional): buka
+  `https://<domain-kantor-pusat>/api/cron?cadangan=1` dengan header
+  `Authorization: Bearer <CRON_SECRET>`.
+
+## 18. CI GitHub
+
+`.github/workflows/ci.yml` menjalankan typecheck + build di setiap push.
+Lihat hasilnya di tab **Actions** repo GitHub Kantor Pusat.
